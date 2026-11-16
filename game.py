@@ -71,6 +71,18 @@ class Game(RenderMixin):
             "clank": make_tone(330, 45, 0.10),
             "blast": make_tone(82, 320, 0.22),
         }
+        # Pre-render the beat-the-record boom once per Game instance, never
+        # on the victory frame. Without numpy (metal is None), without the
+        # synth hook, or without an initialised mixer we simply go without.
+        if (metal is not None and hasattr(metal, "explosion")
+                and pygame.mixer.get_init()):
+            try:
+                boom = pygame.mixer.Sound(buffer=metal.explosion())
+                boom.set_volume(0.85)
+            except Exception:  # noqa: BLE001 - synth failure: keep going
+                boom = None
+            if boom is not None:
+                self.sounds["record"] = boom
         self.canvas = pygame.Surface((WIDTH, HEIGHT))
         self.avatar_tiles = load_avatar_tiles()
         self.leaderboard = leaderboard if leaderboard is not None else Leaderboard()
@@ -436,14 +448,14 @@ class Game(RenderMixin):
         Called only after alien kills and badge payouts, never from the wave
         bonus. Half the surviving formation (floor division, so at least one
         alien stays when two or more remain) pops in its row colour. These
-        kills award no score and no shot statistics, and the blast sound
+        kills award no score and no shot statistics, and the record boom
         plays once for the whole celebration. An empty board never triggers.
         """
         if (self.record_to_beat <= 0 or self.record_beaten
                 or self.score <= self.record_to_beat):
             return
         self.record_beaten = True
-        self.play("blast")
+        self.play("record")
         alive = self.alive_aliens()
         for a in self.rng.sample(alive, len(alive) // 2):
             a.alive = False
