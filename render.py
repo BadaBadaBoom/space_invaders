@@ -141,6 +141,10 @@ class RenderMixin:
                                (int(ring[0]), int(ring[1])), int(ring[2]), 2)
 
     def draw_hud(self, surface: pygame.Surface) -> None:
+        # Live record: follows the running score the moment it passes the board.
+        best = max(self.leaderboard.best, self.score)
+        best_text = self.font_tiny.render(f"BEST {best:05d}", True, UI_DIM)
+        surface.blit(best_text, (LEFT_WALL, 4))
         score = self.font_small.render(f"SCORE {self.score:05d}", True, UI_COLOR)
         wave = self.font_small.render(f"WAVE {self.wave}", True, UI_DIM)
         surface.blit(score, (LEFT_WALL, 24))
