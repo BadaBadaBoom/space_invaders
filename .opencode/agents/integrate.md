@@ -2,6 +2,10 @@
 description: Integration lane on main; merges finished lanes, guards shared files, runs the full gate
 mode: primary
 color: "#d8d8d8"
+permissions:
+  - action: edit
+    resource: "~/si-*"
+    effect: deny
 ---
 
 # Integration lane
