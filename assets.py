@@ -171,3 +171,37 @@ def make_tone(frequency: float, duration_ms: int, volume: float = 0.18,
         return pygame.mixer.Sound(buffer=buf.tobytes())
     except Exception:  # noqa: BLE001 - no mixer means no blip
         return None
+
+
+def make_wail(start_hz: float, end_hz: float, duration_ms: int,
+              volume: float = 0.2, sample_rate: int = 44100,
+              vibrato_hz: float = 11.0,
+              vibrato_depth: float = 0.04) -> pygame.mixer.Sound | None:
+    """A descending, vibrato'd siren for the saucer's death cry.
+
+    Same mono-to-stereo buffer trick as `make_tone`, but the phase is
+    accumulated so a falling pitch stays smooth instead of clicking.
+    """
+    try:
+        init = pygame.mixer.get_init()
+        if not init:
+            return None
+        channels = init[2]
+        rate = init[0] or sample_rate
+        frames = int(rate * duration_ms / 1000)
+        amplitude = int(32767 * volume)
+        buf = array("h")
+        phase = 0.0
+        for i in range(frames):
+            t = i / max(frames, 1)
+            freq = start_hz + (end_hz - start_hz) * t
+            wobble = 1.0 + vibrato_depth * math.sin(
+                2 * math.pi * vibrato_hz * i / rate)
+            phase += 2 * math.pi * freq * wobble / rate
+            decay = (1.0 - t) ** 0.7
+            value = int(amplitude * decay * math.sin(phase))
+            for _ in range(channels):
+                buf.append(value)
+        return pygame.mixer.Sound(buffer=buf.tobytes())
+    except Exception:  # noqa: BLE001 - no mixer means no wail
+        return None

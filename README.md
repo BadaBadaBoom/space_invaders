@@ -236,8 +236,10 @@ through it.
 
 Because it flies above the formation, you can only reach it through a column
 you have already cleared, which is exactly the classic tension. A hit pays the
-points, floats the number up and bursts the saucer in silver and orange; a
-miss costs nothing and the next one is scheduled about 25 seconds later.
+points, floats the number up and bursts the saucer in silver and orange, with
+a screen jolt and its own descending, vibrato'd wail instead of the usual
+short blast; a miss costs nothing and the next one is scheduled about 25
+seconds later.
 
 ## Power-ups
 
@@ -454,7 +456,8 @@ Plays the game with pseudo-random input for N seconds under SDL's dummy video
 driver, asserting that bullets and aliens stay in bounds, that no frame raises,
 and checking bunker erosion, letterboxed scaling at several resolutions, the
 avatar hazards (bouncing, every collision type, explosion effects, spawning),
-the mystery UFO (spawn timing, crossing, payout and bullet-only kills),
+the mystery UFO (spawn timing, crossing, payout, its death shake and wail,
+and bullet-only kills),
 power-up capsules (drop rate, falling, pickup, both timed boosts and repair),
 boss waves (spawning, scaling, sway bounds, all three volleys, damage, the
 kill payout and the victory pause),
@@ -496,8 +499,9 @@ and `DASH_COOLDOWN`.
 The leaderboard size is `LEADERBOARD_SIZE` (100) and its path is
 `SCORES_FILE` at the top of `main.py`.
 
-Screen shake is tuned in `config.py`: `SHAKE_DRIFTER`, `SHAKE_LIFE_LOST` and
-`SHAKE_RECORD` are the peak displacement in canvas pixels for each trigger,
+Screen shake is tuned in `config.py`: `SHAKE_DRIFTER`, `SHAKE_UFO`,
+`SHAKE_LIFE_LOST` and `SHAKE_RECORD` are the peak displacement in canvas
+pixels for each trigger,
 `SHAKE_MAX` caps stacked hits and `SHAKE_DECAY` is the fade time constant in
 seconds. The floating score numbers use `POPUP_LIFE` and `POPUP_RISE`. Set the
 three trigger strengths to 0 to turn shake off. Each wave's alien silhouette

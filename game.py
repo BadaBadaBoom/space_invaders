@@ -12,6 +12,7 @@ from assets import (
     load_font,
     make_pulp_background,
     make_tone,
+    make_wail,
 )
 from config import (
     ALIEN_BULLET_SPEED,
@@ -75,6 +76,7 @@ from config import (
     SHAKE_DRIFTER,
     SHAKE_LIFE_LOST,
     SHAKE_RECORD,
+    SHAKE_UFO,
     SHIELD_W,
     SHIELD_Y,
     SHIELDS,
@@ -123,6 +125,7 @@ class Game(RenderMixin):
             "blast": make_tone(82, 320, 0.22),
             "power": make_tone(1046, 120, 0.14),
             "dash": make_tone(520, 55, 0.10),
+            "wail": make_wail(1900, 620, 420, 0.24),
         }
         # Pre-render the beat-the-record boom once per Game instance, never
         # on the victory frame. Without numpy (metal is None), without the
@@ -597,10 +600,11 @@ class Game(RenderMixin):
         self.ufo_timer = UFO_RESPAWN + self.rng.uniform(-3.0, 3.0)
         self.shots_hit += 1
         self.score += ufo.points
+        self.add_shake(SHAKE_UFO)
         self.spawn_popup(ufo.x + UFO_W / 2, ufo.y, f"+{ufo.points}",
                          UFO_LIGHT)
         self.explode(ufo.x + UFO_W / 2, ufo.y + UFO_H / 2,
-                     [UFO_COLOR, UFO_LIGHT, (255, 255, 255)])
+                     [UFO_COLOR, UFO_LIGHT, (255, 255, 255)], sound="wail")
         self.maybe_celebrate_record()
 
     def maybe_drop_powerup(self, x: float, y: float) -> None:
@@ -775,8 +779,9 @@ class Game(RenderMixin):
         self.drifter_timer = DRIFTER_RESPAWN
 
     def explode(self, x: float, y: float,
-                palette: list[tuple[int, int, int]]) -> None:
-        self.play("blast")
+                palette: list[tuple[int, int, int]],
+                sound: str = "blast") -> None:
+        self.play(sound)
         for _ in range(36):
             angle = self.rng.uniform(0.0, math.tau)
             speed = self.rng.uniform(50.0, 330.0)

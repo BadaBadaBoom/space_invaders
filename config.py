@@ -48,6 +48,7 @@ DASH_COOLDOWN = 1.2
 # Screen shake: peak displacement in canvas pixels per trigger.  Overlapping
 # shakes add together, up to SHAKE_MAX, and fade with SHAKE_DECAY (seconds).
 SHAKE_DRIFTER = 6.0          # you shot a floating avatar
+SHAKE_UFO = 8.0              # you brought down the mystery saucer
 SHAKE_LIFE_LOST = 9.0        # the ship was hit
 SHAKE_RECORD = 16.0          # half the fleet exploded: new high score
 SHAKE_MAX = 20.0

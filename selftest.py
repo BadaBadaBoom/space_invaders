@@ -53,6 +53,7 @@ from config import (
     SHAKE_LIFE_LOST,
     SHAKE_MAX,
     SHAKE_RECORD,
+    SHAKE_UFO,
     UFO_FIRST_DELAY,
     UFO_POINTS,
     UFO_RESPAWN,
@@ -334,6 +335,10 @@ def check_ufo() -> None:
     assert game.ufo is None, "a fresh run starts with no saucer"
     assert 0 < game.ufo_timer <= UFO_FIRST_DELAY[1]
 
+    assert "wail" in game.sounds, "no saucer death cry"
+    if pygame.mixer.get_init():
+        assert game.sounds["wail"] is not None, "wail failed to synthesize"
+
     game.ufo_timer = 0.01
     game.update_ufo(0.02)
     ufo = game.ufo
@@ -353,6 +358,9 @@ def check_ufo() -> None:
     game.score = 0
     game.shots_hit = 0
     game.popups = []
+    game.shake_energy = 0.0
+    played: list[str] = []
+    game.play = played.append
     game.player_bullets = [Bullet(WIDTH / 2 + 10, UFO_Y + 6,
                                   -PLAYER_BULLET_SPEED, True)]
     debris_before = len(game.debris)
@@ -363,6 +371,9 @@ def check_ufo() -> None:
     assert len(game.debris) > debris_before, "no explosion debris"
     assert game.popups and game.popups[-1][2] == "+300"
     assert 0 < game.ufo_timer <= UFO_RESPAWN + 3.0
+    assert game.shake_energy == SHAKE_UFO, "saucer kill did not shake"
+    assert "wail" in played, "saucer died with the generic blast"
+    del game.play
 
     # Alien fire passes it by: only your bullets count.
     game.ufo = Ufo(WIDTH / 2, UFO_Y, 0.0, 50)
@@ -584,7 +595,7 @@ def check_feedback() -> None:
     assert game.shake_offset() == (0, 0)
 
     # Shooting a badge shakes, but less than losing a life or beating the board.
-    assert SHAKE_DRIFTER < SHAKE_LIFE_LOST < SHAKE_RECORD
+    assert SHAKE_DRIFTER < SHAKE_UFO < SHAKE_LIFE_LOST < SHAKE_RECORD
     game.shake_energy = 0.0
     badge = Drifter(pygame.Surface((DRIFTER_SIZE, DRIFTER_SIZE)),
                     [(255, 60, 90)], 400, 300, 0, 0)
