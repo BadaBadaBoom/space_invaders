@@ -1,10 +1,10 @@
 """Procedural 1960s science-fiction paperback cover paintings.
 
 Every wave asks for a fresh cover.  The painter picks a limited period palette
-and one of five compositions -- a rocket ascent, an astronaut vista, a saucer
-over a domed city, a ringed giant, or an eclipse -- then paints it with flat
-shapes, airbrushed glows and a final print-aging pass (halftone, grain,
-creases, misregistration and a vignette).
+and one of six compositions -- a rocket ascent, an astronaut vista, a saucer
+over a domed city, a robot invasion of that city, a ringed giant, or an
+eclipse -- then paints it with flat shapes, airbrushed glows and a final
+print-aging pass (halftone, grain, creases, misregistration and a vignette).
 
 Everything is drawn with pygame primitives plus numpy for gradients and the
 grain pass.  There are no image assets and no model weights, and the same seed
@@ -643,6 +643,30 @@ def _beam(art: pygame.Surface, rng: random.Random, pal: dict[str, object],
                   pal["accent2"], 46)
 
 
+def _searchlight(art: pygame.Surface, rng: random.Random,
+                 pal: dict[str, object], x: float, base_y: float,
+                 length: float) -> None:
+    """A raking anti-aircraft beam, translucent enough to stay period."""
+    length = max(20.0, float(length))
+    angle = rng.uniform(-40.0, 40.0)
+    half_top = length * rng.uniform(0.05, 0.09)
+    surf = pygame.Surface((int(half_top * 2 + 10), int(length)),
+                          pygame.SRCALPHA)
+    cx = surf.get_width() / 2.0
+    floor = surf.get_height()
+    for i in range(6):
+        shrink = 1.0 - i * 0.16
+        pygame.draw.polygon(
+            surf, (*pal["paper"], 7),
+            [(int(cx - 2), floor), (int(cx + 2), floor),
+             (int(cx + half_top * shrink), 0),
+             (int(cx - half_top * shrink), 0)])
+    pygame.draw.line(surf, (*pal["paper"], 44),
+                     (int(cx), floor), (int(cx), 0), 1)
+    rotated = pygame.transform.rotozoom(surf, angle, 1.0)
+    art.blit(rotated, rotated.get_rect(midbottom=(int(x), int(base_y))))
+
+
 # --------------------------------------------------------------------------- #
 # Vehicles and figures
 # --------------------------------------------------------------------------- #
@@ -838,6 +862,143 @@ def _saucer_sprite(rng: random.Random, pal: dict[str, object],
     pygame.draw.circle(surf, pal["accent2"],
                        (int(mast_x), int(mast_top - radius * 0.24)),
                        max(1, int(radius * 0.035)))
+    return surf
+
+
+def _robot_sprite(rng: random.Random, pal: dict[str, object], height: int,
+                  dark: bool = False) -> pygame.Surface:
+    """A boxy retro invader robot, drawn upright with its feet at the bottom.
+
+    Silhouette first: the body reads against the sky, a lit rim picks it out
+    on one side, and the eyes and chest reactor glow in the palette's second
+    accent.  `dark` makes a near-black foreground copy for scale.
+    """
+    hh = float(max(18, height))
+    pad = hh * 0.07
+    surf = pygame.Surface((int(hh * 0.60), int(hh + pad)), pygame.SRCALPHA)
+    cx = surf.get_width() / 2.0
+    top = float(surf.get_height()) - hh
+
+    def y(frac: float) -> float:
+        return top + hh * frac
+
+    if dark:
+        body = _blend(pal["ink"], (0, 0, 0), 0.45)
+        panel = _blend(body, pal["accent"], 0.10)
+        edge = _blend(pal["rim"], pal["paper"], 0.30)
+    else:
+        body = _blend(pal["ink"], pal["accent"], 0.20)
+        panel = _blend(body, pal["ink"], 0.45)
+        edge = _blend(pal["rim"], pal["paper"], 0.10)
+    glow = pal["accent2"]
+    hot = _blend(glow, pal["paper"], 0.45)
+    rim_w = max(1, int(hh * 0.009))
+
+    # Legs and flared feet.
+    _limb(surf, body, (cx - hh * 0.070, y(0.70)),
+          (cx - hh * 0.088, y(0.985)), hh * 0.070)
+    _limb(surf, body, (cx + hh * 0.070, y(0.70)),
+          (cx + hh * 0.088, y(0.985)), hh * 0.070)
+    pygame.draw.rect(surf, body,
+                     _rect(cx - hh * 0.150, y(0.962), hh * 0.125,
+                           hh * 0.034), border_radius=2)
+    pygame.draw.rect(surf, body,
+                     _rect(cx + hh * 0.025, y(0.962), hh * 0.125,
+                           hh * 0.034), border_radius=2)
+
+    # Arms hang behind the torso; pincer hands close below the hips.  A rim
+    # on the outside of each limb keeps them from merging into the torso.
+    for side in (-1, 1):
+        shoulder = (cx + side * hh * 0.168, y(0.315))
+        elbow = (cx + side * hh * 0.205, y(0.500))
+        wrist = (cx + side * hh * 0.185, y(0.630))
+        _limb(surf, body, shoulder, elbow, hh * 0.048)
+        _limb(surf, body, elbow, wrist, hh * 0.042)
+        for k in (-1, 0, 1):
+            tip = (wrist[0] + k * hh * 0.028, wrist[1] + hh * 0.055)
+            pygame.draw.line(surf, body, _pt(wrist), _pt(tip),
+                             max(1, int(hh * 0.013)))
+        pygame.draw.line(surf, edge,
+                         _pt((shoulder[0] + side * hh * 0.027, shoulder[1])),
+                         _pt((elbow[0] + side * hh * 0.025, elbow[1])), rim_w)
+        pygame.draw.line(surf, edge,
+                         _pt((elbow[0] + side * hh * 0.023, elbow[1])),
+                         _pt((wrist[0] + side * hh * 0.022, wrist[1])), rim_w)
+
+    # Tapered torso.
+    pygame.draw.polygon(surf, body, _pts((
+        (cx - hh * 0.125, y(0.270)), (cx + hh * 0.125, y(0.270)),
+        (cx + hh * 0.095, y(0.710)), (cx - hh * 0.095, y(0.710)))))
+
+    # Chest panel with vent slots and a reactor.
+    pygame.draw.rect(surf, panel,
+                     _rect(cx - hh * 0.075, y(0.330), hh * 0.150,
+                           hh * 0.200), border_radius=2)
+    vent = _blend(panel, pal["paper"], 0.30)
+    for i in range(3):
+        pygame.draw.rect(surf, vent,
+                         _rect(cx - hh * 0.055, y(0.355 + i * 0.045),
+                               hh * 0.110, hh * 0.012))
+    reactor_y = y(0.600)
+    _soft_circle(surf, cx, reactor_y, hh * 0.055, glow, 120)
+    pygame.draw.circle(surf, glow, (int(cx), int(reactor_y)),
+                       max(1, int(hh * 0.024)))
+    pygame.draw.circle(surf, hot, (int(cx), int(reactor_y)),
+                       max(1, int(hh * 0.010)))
+
+    # Shoulder pads over the arm joints.
+    pygame.draw.rect(surf, body,
+                     _rect(cx - hh * 0.172, y(0.272), hh * 0.058,
+                           hh * 0.086), border_radius=2)
+    pygame.draw.rect(surf, body,
+                     _rect(cx + hh * 0.114, y(0.272), hh * 0.058,
+                           hh * 0.086), border_radius=2)
+
+    # Neck and head.
+    pygame.draw.rect(surf, body,
+                     _rect(cx - hh * 0.035, y(0.240), hh * 0.070,
+                           hh * 0.040))
+    pygame.draw.rect(surf, body,
+                     _rect(cx - hh * 0.105, y(0.098), hh * 0.210,
+                           hh * 0.158),
+                     border_radius=int(max(1, hh * 0.012)))
+
+    eye_y = y(0.165)
+    if rng.random() < 0.38:
+        eyes = (cx,)
+        eye_r = hh * 0.032
+    else:
+        eyes = (cx - hh * 0.052, cx + hh * 0.052)
+        eye_r = hh * 0.022
+    for ex in eyes:
+        _soft_circle(surf, ex, eye_y, eye_r * 2.6, glow, 110)
+        pygame.draw.circle(surf, glow, (int(ex), int(eye_y)),
+                           max(1, int(eye_r)))
+        pygame.draw.circle(surf, hot, (int(ex), int(eye_y)),
+                           max(1, int(eye_r * 0.45)))
+
+    # Mouth grille.
+    for i in range(3):
+        mx = cx + (i - 1) * hh * 0.028
+        pygame.draw.line(surf, panel, (int(mx), int(y(0.212))),
+                         (int(mx), int(y(0.234))),
+                         max(1, int(hh * 0.008)))
+
+    # Antenna.
+    ax = cx + rng.uniform(-0.05, 0.05) * hh
+    pygame.draw.line(surf, body, (int(ax), int(y(0.098))),
+                     (int(ax), int(y(0.035))),
+                     max(1, int(hh * 0.010)))
+    pygame.draw.circle(surf, glow, (int(ax), int(y(0.030))),
+                       max(1, int(hh * 0.014)))
+
+    # Lit rim down the side facing the sky glow.
+    pygame.draw.line(surf, edge,
+                     (int(cx + hh * 0.121), int(y(0.283))),
+                     (int(cx + hh * 0.092), int(y(0.700))), rim_w)
+    pygame.draw.line(surf, edge,
+                     (int(cx + hh * 0.101), int(y(0.112))),
+                     (int(cx + hh * 0.101), int(y(0.240))), rim_w)
     return surf
 
 
@@ -1458,6 +1619,68 @@ def _scene_saucer(art: pygame.Surface, rng: random.Random,
                          rng.choice(("up", "stand", "wave")), dark)
 
 
+def _scene_robots(art: pygame.Surface, rng: random.Random,
+                  pal: dict[str, object]) -> None:
+    """A robot invasion: boxy machines standing over the domed city."""
+    w, h = art.get_size()
+
+    moon_r = int(h * rng.uniform(0.045, 0.075))
+    side = rng.choice((-1, 1))
+    mx = int(w * (rng.uniform(0.12, 0.24) if side < 0
+                  else rng.uniform(0.76, 0.88)))
+    my = int(h * rng.uniform(0.09, 0.17))
+    _planet(art, rng, pal, mx, my, moon_r, craters=True)
+    if rng.random() < 0.5:
+        _comet(art, rng, pal)
+
+    ground = int(h * rng.uniform(0.66, 0.71))
+    _city(art, rng, pal, ground, scale=rng.uniform(0.78, 1.06))
+
+    # Searchlights hunt the sky behind the machines.
+    for _ in range(rng.randint(1, 3)):
+        _searchlight(art, rng, pal, w * rng.uniform(0.06, 0.94), ground,
+                     h * rng.uniform(0.55, 0.85))
+
+    # A saucer supervising the work.
+    if rng.random() < 0.32:
+        radius = int(w * rng.uniform(0.040, 0.058))
+        sx = w * rng.uniform(0.22, 0.78)
+        sy = ground - radius * rng.uniform(2.2, 3.4)
+        sprite = _saucer_sprite(rng, pal, radius)
+        art.blit(sprite, sprite.get_rect(center=(int(sx), int(sy))))
+
+    far_y = int(h * (ground / h + 0.035))
+    near_y = int(h * (ground / h + 0.068))
+    slots = rng.sample(((0.14, 0.30), (0.42, 0.58), (0.70, 0.86)),
+                       rng.choice((1, 2, 2)))
+    for low, high in slots:
+        height = int(h * rng.uniform(0.25, 0.38))
+        sprite = _robot_sprite(rng, pal, height)
+        if rng.random() < 0.5:
+            sprite = pygame.transform.flip(sprite, True, False)
+        art.blit(sprite, sprite.get_rect(
+            midbottom=(int(w * rng.uniform(low, high)),
+                       far_y + int(height * 0.04))))
+
+    _ridge(art, rng, pal, far_y, 10, pal["terrain_far"], rim=False)
+    _ridge(art, rng, pal, near_y, 12, pal["terrain_near"],
+           craters=rng.random() < 0.45)
+
+    # One machine right up against the camera for scale.
+    if rng.random() < 0.68:
+        height = int(h * rng.uniform(0.48, 0.66))
+        sprite = _robot_sprite(rng, pal, height, dark=True)
+        near_side = rng.choice((-1, 1))
+        if near_side > 0:
+            sprite = pygame.transform.flip(sprite, True, False)
+        x = w * (rng.uniform(0.09, 0.21) if near_side < 0
+                 else rng.uniform(0.79, 0.91))
+        art.blit(sprite, sprite.get_rect(
+            midbottom=(int(x), int(h + height * 0.10))))
+
+    _foreground_flora(art, rng, pal, near_y + 5)
+
+
 def _scene_ringed(art: pygame.Surface, rng: random.Random,
                   pal: dict[str, object]) -> None:
     w, h = art.get_size()
@@ -1601,6 +1824,20 @@ def _age(art: pygame.Surface, rng: random.Random,
         art.blit(spot, (rng.randrange(w), rng.randrange(h)))
 
 
+# Scene name, painter, and how often it appears (weights need not sum to 100).
+SCENES = (
+    ("rocket", _scene_rocket, 26),
+    ("astronaut", _scene_astronaut, 24),
+    ("saucer", _scene_saucer, 18),
+    ("robots", _scene_robots, 12),
+    ("ringed", _scene_ringed, 11),
+    ("eclipse", _scene_eclipse, 9),
+)
+SCENE_NAMES = tuple(name for name, _paint, _weight in SCENES)
+SCENE_WEIGHTS = tuple(weight for _name, _paint, weight in SCENES)
+SCENE_PAINTERS = {name: paint for name, paint, _weight in SCENES}
+
+
 def make_cover(rng: random.Random, width: int = 800,
                height: int = 600) -> pygame.Surface:
     """Paint one fresh 1960s paperback cover, dimmed for gameplay."""
@@ -1616,16 +1853,8 @@ def make_cover(rng: random.Random, width: int = 800,
                       pal["accent"], 15)
     _stars(art, rng, pal, rng.randint(140, 250), max_y=height * 0.9)
 
-    scene = rng.choices(
-        ("rocket", "astronaut", "saucer", "ringed", "eclipse"),
-        weights=(30, 28, 20, 12, 10), k=1)[0]
-    {
-        "rocket": _scene_rocket,
-        "astronaut": _scene_astronaut,
-        "saucer": _scene_saucer,
-        "ringed": _scene_ringed,
-        "eclipse": _scene_eclipse,
-    }[scene](art, rng, pal)
+    scene = rng.choices(SCENE_NAMES, weights=SCENE_WEIGHTS, k=1)[0]
+    SCENE_PAINTERS[scene](art, rng, pal)
 
     _cover_text(art, rng, pal)
     _age(art, rng, pal)

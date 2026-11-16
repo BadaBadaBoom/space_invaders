@@ -72,6 +72,7 @@ def selftest(seconds: float) -> int:
     check_scaling(game)
     check_crt()
     check_backgrounds(scores)
+    check_cover_scenes()
     check_music()
     check_music_player()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -733,6 +734,24 @@ def check_stats() -> None:
         view.draw(view.canvas)          # populated table must render
         view.close_scores()
         assert view.state == "playing"
+
+
+def check_cover_scenes() -> None:
+    """Every composition paints cleanly, and the robot invasion is wired up."""
+    from covers import SCENES, _gradient, _palette
+
+    names = [name for name, _paint, _weight in SCENES]
+    assert len(set(names)) == len(names), "duplicate scene name"
+    assert len(names) >= 6, f"only {len(names)} compositions"
+    assert "robots" in names, "robot invasion scene is missing"
+    for name, paint, weight in SCENES:
+        assert weight > 0, f"scene {name} can never be chosen"
+        for seed in range(3):
+            rng = random.Random(seed * 17 + 3)
+            pal = _palette(rng)
+            art = _gradient(400, 300, pal["sky_top"], pal["sky_bottom"])
+            paint(art, rng, pal)
+            assert art.get_size() == (400, 300), f"{name} resized the canvas"
 
 
 def check_music() -> None:

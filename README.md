@@ -229,7 +229,7 @@ are different every wave and deterministic for a given seed.
 
 Each cover starts from one of eight limited period palettes (ember, teal,
 violet, acid, ultra, rust, cobalt, mint), jittered per painting and sometimes
-washed into a bright matte-painting sky. It then paints one of five
+washed into a bright matte-painting sky. It then paints one of six
 compositions:
 
 - a finned rocket climbing past a world, or lifting off beside a lattice
@@ -237,12 +237,15 @@ compositions:
 - bubble-helmet astronauts on a ridge above a lit domed city
 - a flying saucer and its escorts over the skyline, with or without a light
   beam
+- boxy invasion robots towering over that domed city while searchlights rake
+  the sky, sometimes with a saucer overhead and a giant machine looming in the
+  foreground
 - a banded ringed giant with rings drawn behind and in front of the disc
 - a total eclipse with a coronal glow and a silhouetted ship
 
 Supporting elements include lit domes, setback towers and needle spires,
 jagged ridge lines with rim light and craters, deserts with alien flora,
-moons, comets, orbit arcs and distant craft. The planets are shaded with a
+moons, comets, orbit arcs, searchlight beams and distant craft. The planets are shaded with a
 real light direction and latitude-band curvature, and the figures cast a
 dark contour plus a light rim so they read against both sky and planet.
 
