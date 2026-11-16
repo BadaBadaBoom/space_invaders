@@ -9,6 +9,7 @@ Controls
     Up / Down                 music volume up / down
     keypad +                  next song
     L                         high-score leaderboard
+    F3                        cycle the CRT filter (off / low / medium / high)
     F11  /  Alt+Enter         fullscreen (the view scales to any size)
     Enter                     start / restart (composes a new song)
 
@@ -45,6 +46,7 @@ except ModuleNotFoundError:
 
 from audio import DEFAULT_VOLUME, VOLUME_STEP, MusicPlayer
 from config import (
+    CRT_DEFAULT,
     FPS,
     HEIGHT,
     LEADERBOARD_ROWS,
@@ -53,10 +55,13 @@ from config import (
     UI_DIM,
     WIDTH,
 )
+from crt import CrtOverlay
 from deps import metal
 from game import Game
 from news import NewsFeed
 from selftest import selftest
+
+CRT_PRESETS = ("off", "low", "medium", "high")
 
 
 def read_input() -> tuple[int, bool]:
@@ -102,6 +107,7 @@ def main() -> int:
     clock = pygame.time.Clock()
 
     game = Game()
+    crt = CrtOverlay((WIDTH, HEIGHT), preset=CRT_DEFAULT)
     news_feed = NewsFeed()
     music_player = MusicPlayer(enabled=not args.no_music,
                               volume=args.music_volume)
@@ -113,6 +119,7 @@ def main() -> int:
     running = True
     story_assigned = False
     volume_hint: tuple[str, int] | None = None
+    crt_hint: tuple[str, int] | None = None
 
     def toggle_fullscreen() -> None:
         nonlocal screen, fullscreen
@@ -186,6 +193,11 @@ def main() -> int:
                 elif event.key == pygame.K_F11 or (
                         event.key == pygame.K_RETURN and event.mod & pygame.KMOD_ALT):
                     toggle_fullscreen()
+                elif event.key == pygame.K_F3:
+                    index = (CRT_PRESETS.index(crt.preset) + 1) % len(CRT_PRESETS)
+                    crt.set_preset(CRT_PRESETS[index])
+                    crt_hint = (f"CRT {crt.preset.upper()}",
+                                pygame.time.get_ticks() + 1400)
                 elif event.key == pygame.K_l:
                     game.show_scores()
                 elif event.key == pygame.K_RETURN and game.state in ("title", "gameover"):
@@ -242,11 +254,14 @@ def main() -> int:
         hint = None
         if volume_hint is not None and now < volume_hint[1]:
             hint = volume_hint[0]
+        if crt_hint is not None and now < crt_hint[1]:
+            hint = crt_hint[0]
         if music_player.muted and game.state not in ("title", "scores"):
             hint = "MUSIC OFF"
         if hint:
             label = game.font_small.render(hint, True, UI_DIM)
             game.canvas.blit(label, (RIGHT_WALL - label.get_width(), 44))
+        crt.apply_inplace(game.canvas, t=pygame.time.get_ticks() / 1000)
         game.present(screen)
         pygame.display.flip()
 
