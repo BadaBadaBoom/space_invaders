@@ -18,6 +18,8 @@ entities.py    bullets, aliens, player, bunkers, avatar hazards
 leaderboard.py persistent top-100 table
 audio.py       MusicPlayer worker thread and mixer channels
 render.py      RenderMixin: playfield, HUD, leaderboard, overlays
+crt.py         pure-pygame CRT post-process overlay
+news.py        NASA story feed for the game-over card
 game.py        Game state, collisions, waves, and scoring
 selftest.py    headless smoke tests and invariant checks
 covers.py      procedural 1960s paperback-cover painter
@@ -108,6 +110,7 @@ and painted backdrops, but no soundtrack.
 | `M` | Mute / unmute music |
 | `↑` / `↓` | Music volume up / down (10% steps) |
 | keypad `+` | Next song (new composition, same genre) |
+| `F3` | CRT filter: off / low / medium / high |
 | `F11` or `Alt+Enter` | Fullscreen on/off |
 | `Enter` | Start / restart (composes a new song) |
 | `Esc` | Leave fullscreen, or quit |
@@ -255,6 +258,16 @@ grows together on a big display.
 
 - `F11` or `Alt+Enter` toggles fullscreen at the desktop resolution.
 - The window is resizable; drag it and the view scales with it.
+
+## CRT filter
+
+Every frame gets a pure-pygame CRT pass before it is scaled to the window:
+scanlines, an RGB aperture grille and a vignette, plus a soft bloom and a slow
+rolling refresh band on the default `medium` preset; `high` adds grain and
+short phosphor trails. Press `F3` to cycle `off -> low -> medium -> high`, with
+a brief on-screen hint. The default is `CRT_DEFAULT = "medium"` in `config.py`.
+The pass runs on the 800×600 canvas, so its cost stays fixed regardless of
+window size, and `off` skips it entirely.
 
 ## What's in it
 
