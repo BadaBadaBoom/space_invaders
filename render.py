@@ -305,7 +305,8 @@ class RenderMixin:
                 ("PAUSE", "P"),
                 ("SCORES", "L  leaderboard"),
                 ("FULLSCREEN", "F11"),
-                ("MUSIC", "M  mute   ↑/↓ volume   KP + next"),
+                ("CRT", "F3 filter   [ / ] intensity"),
+                ("MUSIC", "M  mute   ↑/↓ volume   NUMPAD + next"),
                 ("QUIT", "ESC"),
             ]
             key_x = WIDTH // 2 - 190
