@@ -57,7 +57,7 @@ SHIELD_BOTTOM_COLOR = (55, 150, 115)
 # Floating avatar hazards (one sprite sheet, six badges).
 AVATAR_SHEET = Path(os.environ.get(
     "SPACE_INVADERS_AVATARS", Path.home() / "avatars" / "image_79efc5be.jpeg"))
-DRIFTER_SIZE = 46            # a little larger than an alien (34 x 24)
+DRIFTER_SIZE = 39            # a little larger than an alien (34 x 24)
 DRIFTER_SPEED_MIN, DRIFTER_SPEED_MAX = 70.0, 125.0
 DRIFTER_SPAWN_DELAY = 2.2
 DRIFTER_RESPAWN = 4.5
