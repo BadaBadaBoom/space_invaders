@@ -10,7 +10,8 @@ fixed at 800x600 no matter how large the window is.
     game.present(screen)
 
 Presets: "off", "low", "medium", "high".  Rebuild with set_size() when the
-canvas size changes; switch strength with set_preset().
+canvas size changes; switch presets with set_preset() and scale the active
+preset with set_intensity() (0.0-1.0).
 """
 
 from __future__ import annotations
@@ -46,9 +47,10 @@ PRESETS: dict[str, dict[str, float]] = {
 
 class CrtOverlay:
     def __init__(self, size: tuple[int, int], preset: str = "medium",
-                 seed: int = 7) -> None:
+                 intensity: float = 1.0, seed: int = 7) -> None:
         self.size = (max(1, int(size[0])), max(1, int(size[1])))
         self.seed = seed
+        self.intensity = max(0.0, min(1.0, float(intensity)))
         self._out: pygame.Surface | None = None
         self._prev: pygame.Surface | None = None
         self._snap: pygame.Surface | None = None
@@ -65,7 +67,14 @@ class CrtOverlay:
         if preset not in PRESETS:
             raise ValueError(f"unknown CRT preset: {preset}")
         self.preset = preset
-        self.cfg = dict(PRESETS[preset])
+        self._preset_cfg = dict(PRESETS[preset])
+        self._prev = None
+        self._snap = None
+        self._build()
+
+    def set_intensity(self, intensity: float) -> None:
+        """Scale the active preset's effect strength (0.0-1.0)."""
+        self.intensity = max(0.0, min(1.0, float(intensity)))
         self._prev = None
         self._snap = None
         self._build()
@@ -79,6 +88,10 @@ class CrtOverlay:
 
     def _build(self) -> None:
         w, h = self.size
+        self.cfg = {
+            key: value * self.intensity
+            for key, value in self._preset_cfg.items()
+        }
         cfg = self.cfg
 
         # One multiply surface for scanlines + aperture grille + vignette.
