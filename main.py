@@ -7,7 +7,7 @@ Controls
     P                         pause
     M                         mute music
     Up / Down                 music volume up / down
-    keypad +                  next song
+    numpad +                  next song
     L                         high-score leaderboard
     F3                        cycle the CRT filter (off / low / medium / high)
     [ / ]                     CRT intensity down / up (10% steps)
@@ -199,15 +199,15 @@ def main() -> int:
                 elif event.key == pygame.K_F3:
                     index = (CRT_PRESETS.index(crt.preset) + 1) % len(CRT_PRESETS)
                     crt.set_preset(CRT_PRESETS[index])
-                    level = round(crt.intensity * 100)
-                    crt_hint = (f"CRT {crt.preset.upper()} {level}%",
+                    crt_hint = (f"CRT {crt.preset.upper()}",
                                 pygame.time.get_ticks() + 1400)
                 elif event.key in (pygame.K_LEFTBRACKET, pygame.K_RIGHTBRACKET):
                     step = (CRT_INTENSITY_STEP
                             if event.key == pygame.K_RIGHTBRACKET
                             else -CRT_INTENSITY_STEP)
                     crt.set_intensity(crt.intensity + step)
-                    crt_hint = (f"CRT {round(crt.intensity * 100)}%",
+                    level = round(crt.intensity * 100)
+                    crt_hint = (f"CRT {crt.preset.upper()} {level}%",
                                 pygame.time.get_ticks() + 1400)
                 elif event.key == pygame.K_l:
                     game.show_scores()
