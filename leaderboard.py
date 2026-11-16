@@ -22,6 +22,11 @@ class Leaderboard:
         self.path = Path(path) if path is not None else SCORES_FILE
         self.entries = self.load()
 
+    @property
+    def best(self) -> int:
+        """Highest score on the board, or 0 when it is empty."""
+        return int(self.entries[0]["score"]) if self.entries else 0
+
     @staticmethod
     def clean_entry(raw: object) -> dict[str, float] | None:
         if not isinstance(raw, dict):
