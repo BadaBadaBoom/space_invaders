@@ -326,6 +326,7 @@ def check_feedback() -> None:
     game.drifters = [badge]
     game.destroy_drifter(badge)
     assert game.shake_energy == SHAKE_DRIFTER
+    assert game.shake_offset() != (0, 0), "badge kill does not move the view"
 
     # The record blast is the big one, and stacked hits are capped.
     game.shake_energy = 0.0

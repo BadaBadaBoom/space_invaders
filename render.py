@@ -128,6 +128,9 @@ class RenderMixin:
     def add_shake(self, strength: float) -> None:
         """Kick the screen; overlapping shakes stack up to SHAKE_MAX pixels."""
         self.shake_energy = min(SHAKE_MAX, self.shake_energy + strength)
+        # Restart the wave so the kick lands at full displacement this frame
+        # instead of starting wherever the previous one happened to be.
+        self.shake_phase = 0.0
 
     def update_feedback(self, dt: float) -> None:
         """Settle shake and score popups even while the sim is paused or over."""
@@ -147,9 +150,10 @@ class RenderMixin:
         if amplitude < 0.5:
             return 0, 0
         phase = self.shake_phase
-        # Two incommensurate frequencies read as a jolt rather than a wobble.
-        return (round(math.sin(phase * 91.0) * amplitude),
-                round(math.sin(phase * 137.0 + 1.3) * amplitude))
+        # Two incommensurate frequencies around 9-13 Hz: fast enough to read as
+        # a jolt, slow enough that consecutive frames still cohere.
+        return (round(math.cos(phase * 57.0) * amplitude),
+                round(math.sin(phase * 83.0 + 1.3) * amplitude))
 
     def draw(self, surface: pygame.Surface) -> None:
         self.draw_background(surface)

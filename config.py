@@ -41,10 +41,10 @@ MAX_PLAYER_BULLETS = 3
 
 # Screen shake: peak displacement in canvas pixels per trigger.  Overlapping
 # shakes add together, up to SHAKE_MAX, and fade with SHAKE_DECAY (seconds).
-SHAKE_DRIFTER = 2.5          # you shot a floating avatar
-SHAKE_LIFE_LOST = 6.5        # the ship was hit
-SHAKE_RECORD = 15.0          # half the fleet exploded: new high score
-SHAKE_MAX = 18.0
+SHAKE_DRIFTER = 6.0          # you shot a floating avatar
+SHAKE_LIFE_LOST = 9.0        # the ship was hit
+SHAKE_RECORD = 16.0          # half the fleet exploded: new high score
+SHAKE_MAX = 20.0
 SHAKE_DECAY = 0.16
 
 # Floating "+points" numbers: how long they live and how fast they rise.
