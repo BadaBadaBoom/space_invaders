@@ -29,15 +29,21 @@ from config import (
     LEFT_WALL,
     PLAYER_BULLET_SPEED,
     RIGHT_WALL,
+    ROW_POINTS,
     SHIELD_COLS,
     SHIELD_ROWS,
     SHIELDS,
+    SHAKE_DRIFTER,
+    SHAKE_LIFE_LOST,
+    SHAKE_MAX,
+    SHAKE_RECORD,
     WIDTH,
 )
 from deps import metal, np
 from entities import Bullet, Drifter, Shield
 from game import Game
 from leaderboard import Leaderboard, _score_order
+from render import alien_look
 
 
 def selftest(seconds: float) -> int:
@@ -57,6 +63,7 @@ def selftest(seconds: float) -> int:
 
     check_shields(scores)
     check_drifters(scores)
+    check_feedback()
     check_leaderboard()
     check_record_celebration()
     check_news()
@@ -85,6 +92,7 @@ def selftest(seconds: float) -> int:
             game.start()
         game.update(dt, move, fire)
         game.update_effects(dt)
+        game.update_feedback(dt)
         game.draw(game.canvas)
         game.present(screen)
         eroded_seen = eroded_seen or any(
@@ -102,6 +110,9 @@ def selftest(seconds: float) -> int:
             assert 0 <= r.y <= FLOOR_Y + ALIEN_H, f"alien below floor without game over: {r}"
         assert 0 <= game.shots_hit <= game.shots_fired
         assert 0 <= game.bunker_cells_shot <= game.bunker_cells_total
+        dx, dy = game.shake_offset()
+        assert abs(dx) <= SHAKE_MAX and abs(dy) <= SHAKE_MAX
+        assert all(p[4] > 0 for p in game.popups)
         stats = game.run_stats()
         assert 0.0 <= stats["bunker"] <= 100.0
         assert 0.0 <= stats["accuracy"] <= 100.0
@@ -287,6 +298,73 @@ def check_drifters(leaderboard: Leaderboard | None = None) -> None:
             game.drifter_timer = 0.0  # try to force a spawn every frame
             peak = max(peak, len(game.drifters))
         assert peak == expected, f"wave {wave}: peak {peak}, expected {expected}"
+
+
+def check_feedback() -> None:
+    """Shake fires on all three triggers and settles; points pop and rise."""
+    game = Game(seed=21)
+    game.start()
+    assert game.shake_energy == 0.0, "a fresh run must not shake"
+    assert game.shake_offset() == (0, 0), "a fresh run must not be offset"
+
+    # Losing a life jolts the screen; the offset stays bounded by SHAKE_MAX.
+    game.lives = 3
+    game.player_hit()
+    assert game.shake_energy == SHAKE_LIFE_LOST
+    dx, dy = game.shake_offset()
+    assert abs(dx) <= SHAKE_MAX and abs(dy) <= SHAKE_MAX
+    for _ in range(120):
+        game.update_feedback(1 / 60)
+    assert game.shake_energy == 0.0, "shake never settled"
+    assert game.shake_offset() == (0, 0)
+
+    # Shooting a badge shakes, but less than losing a life or beating the board.
+    assert SHAKE_DRIFTER < SHAKE_LIFE_LOST < SHAKE_RECORD
+    game.shake_energy = 0.0
+    badge = Drifter(pygame.Surface((DRIFTER_SIZE, DRIFTER_SIZE)),
+                    [(255, 60, 90)], 400, 300, 0, 0)
+    game.drifters = [badge]
+    game.destroy_drifter(badge)
+    assert game.shake_energy == SHAKE_DRIFTER
+
+    # The record blast is the big one, and stacked hits are capped.
+    game.shake_energy = 0.0
+    game.record_to_beat = 1
+    game.record_beaten = False
+    game.score = 2
+    game.maybe_celebrate_record()
+    assert game.shake_energy == SHAKE_RECORD
+    game.add_shake(SHAKE_RECORD * 10)
+    assert game.shake_energy == SHAKE_MAX, "shake stacked past the cap"
+
+    # A kill spawns a rising, fading number and it is cleaned up.
+    game = Game(seed=21)
+    game.start()
+    game.popups = []
+    game.score = 0
+    target = game.aliens[0]
+    game.player_bullets.append(
+        Bullet(target.x + ALIEN_W / 2, target.y + ALIEN_H / 2,
+               -PLAYER_BULLET_SPEED, True))
+    game.check_collisions()
+    assert not target.alive, "test bullet missed the alien"
+    assert len(game.popups) == 1, "kill did not pop up a score"
+    popup = game.popups[0]
+    assert popup[2] == f"+{ROW_POINTS[0]}"
+    top = popup[1]
+    game.update_feedback(1 / 60)
+    assert popup[1] < top, "score popup did not rise"
+    game.update_feedback(popup[4] + 0.01)
+    assert not game.popups, "score popup never expired"
+
+    # Every wave gets its own fleet silhouette, never repeating a feature on
+    # the next wave, and the same wave always looks the same.
+    looks = [alien_look(wave) for wave in range(1, 10)]
+    assert alien_look(3) == alien_look(3), "wave look is not deterministic"
+    for before, after in zip(looks, looks[1:]):
+        assert before.antenna != after.antenna, "headgear repeated next wave"
+        assert before.eyes != after.eyes, "eyes repeated next wave"
+        assert before.legs != after.legs, "legs repeated next wave"
 
 
 def check_leaderboard() -> None:

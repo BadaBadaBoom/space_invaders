@@ -282,7 +282,8 @@ size, and `off` or 0% intensity skips it entirely.
 
 ## What's in it
 
-- 4 rows × 8 aliens, each row worth a different number of points
+- 4 rows × 8 aliens, each row worth a different number of points, and the
+  fleet's silhouette shifts a little every wave (headgear, eyes, legs, stripes)
 - The whole formation marches side to side and drops at the walls; it speeds up
   as you thin out the ranks
 - Only the front-most alien in each column can shoot, so hiding behind a
@@ -300,6 +301,10 @@ size, and `off` or 0% intensity skips it entirely.
 - Title, pause, and game-over screens; starfield plus a fresh 1960s cover
   backdrop each wave; particle debris; procedural sound effects and a
   different music genre per wave
+- **Hit feedback**: the whole view jolts when the ship takes a hit, a little
+  when you shoot an avatar badge, and hard when you beat the board's best;
+  every score award floats up as a fading number, and a live 8×4 fleet map in
+  the HUD dims as the ranks thin out
 - **A persistent top-100 leaderboard** (see below) recording score, wave,
   avatars killed and your shooting statistics
 - **A NASA story on every game-over screen** (see below): picture, headline and
@@ -395,6 +400,13 @@ limit is the wave number (set in `Game.update_drifters`).
 
 The leaderboard size is `LEADERBOARD_SIZE` (100) and its path is
 `SCORES_FILE` at the top of `main.py`.
+
+Screen shake is tuned in `config.py`: `SHAKE_DRIFTER`, `SHAKE_LIFE_LOST` and
+`SHAKE_RECORD` are the peak displacement in canvas pixels for each trigger,
+`SHAKE_MAX` caps stacked hits and `SHAKE_DECAY` is the fade time constant in
+seconds. The floating score numbers use `POPUP_LIFE` and `POPUP_RISE`. Set the
+three trigger strengths to 0 to turn shake off. Each wave's alien silhouette
+comes from `alien_look()` in `render.py`, keyed on the wave number.
 
 For the music, see the top of `music.py`: `RIFF_RHYTHMS` defines the rhythm
 templates, `Composer._make_sections` and each genre's `sections` define the song

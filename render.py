@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 import pygame
 
@@ -20,14 +21,56 @@ from config import (
     PLAYER_BULLET_COLOR,
     PLAYER_COLOR,
     PLAYER_W,
+    POPUP_RISE,
     RIGHT_WALL,
     ROW_COLORS,
+    SHAKE_DECAY,
+    SHAKE_MAX,
     UI_COLOR,
     UI_DIM,
     WIDTH,
 )
 
 _ELLIPSIS = "…"
+
+
+@dataclass(frozen=True)
+class AlienLook:
+    """One wave's take on the invader silhouette.
+
+    Every field is an index into a small drawing variation, so the whole
+    fleet shares a look for the wave while each wave looks a little different.
+    """
+    antenna: int = 0     # 0 pods, 1 horns, 2 crest, 3 fins
+    eyes: int = 0        # 0 squares, 1 visor, 2 dots, 3 mono-eye
+    legs: int = 0        # 0 wide, 1 narrow, 2 pointed
+    roundness: int = 4   # body corner radius
+    stripe: bool = False
+
+
+DEFAULT_LOOK = AlienLook()
+_LOOK_CACHE: dict[int, AlienLook] = {}
+
+
+def alien_look(wave: int) -> AlienLook:
+    """Per-wave look with no feature repeated two waves running.
+
+    Wave 1 is the classic silhouette, and each following wave advances every
+    feature independently, so the fleet changes a little every time without
+    ever drifting far from a recognizable invader.
+    """
+    look = _LOOK_CACHE.get(wave)
+    if look is None:
+        step = wave - 1
+        look = AlienLook(
+            antenna=step % 4,
+            eyes=(step * 3) % 4,
+            legs=(step * 2) % 3,
+            roundness=(4, 6, 1)[step % 3],
+            stripe=step % 5 == 4,
+        )
+        _LOOK_CACHE[wave] = look
+    return look
 
 
 def wrap_text(font: pygame.font.Font, text: str, width: int,
@@ -80,6 +123,34 @@ def wrap_text(font: pygame.font.Font, text: str, width: int,
 
 
 class RenderMixin:
+    # -- screen shake ------------------------------------------------------ #
+
+    def add_shake(self, strength: float) -> None:
+        """Kick the screen; overlapping shakes stack up to SHAKE_MAX pixels."""
+        self.shake_energy = min(SHAKE_MAX, self.shake_energy + strength)
+
+    def update_feedback(self, dt: float) -> None:
+        """Settle shake and score popups even while the sim is paused or over."""
+        self.shake_phase += dt
+        if self.shake_energy > 0.0:
+            self.shake_energy *= math.exp(-dt / SHAKE_DECAY)
+            if self.shake_energy < 0.1:
+                self.shake_energy = 0.0
+        for popup in self.popups:
+            popup[1] -= POPUP_RISE * dt
+            popup[4] -= dt
+        self.popups = [p for p in self.popups if p[4] > 0]
+
+    def shake_offset(self) -> tuple[int, int]:
+        """Current whole-canvas offset in pixels, or (0, 0) when settled."""
+        amplitude = self.shake_energy * 0.8
+        if amplitude < 0.5:
+            return 0, 0
+        phase = self.shake_phase
+        # Two incommensurate frequencies read as a jolt rather than a wobble.
+        return (round(math.sin(phase * 91.0) * amplitude),
+                round(math.sin(phase * 137.0 + 1.3) * amplitude))
+
     def draw(self, surface: pygame.Surface) -> None:
         self.draw_background(surface)
         self.draw_walls(surface)
@@ -90,6 +161,7 @@ class RenderMixin:
             self.draw_bullets(surface)
             self.draw_player(surface)
             self.draw_debris(surface)
+            self.draw_popups(surface)
             self.draw_hud(surface)
         self.draw_overlay(surface)
 
@@ -113,31 +185,81 @@ class RenderMixin:
 
     def draw_aliens(self, surface: pygame.Surface) -> None:
         frame = int(self.alien_anim) % 2
+        look = alien_look(getattr(self, "wave", 1))
         for a in self.aliens:
             if not a.alive:
                 continue
             color = ROW_COLORS[a.row % len(ROW_COLORS)]
             x, y = int(a.x), int(a.y)
-            self.draw_alien_sprite(surface, x, y, color, frame)
+            self.draw_alien_sprite(surface, x, y, color, frame, look)
 
     def draw_alien_sprite(self, surface: pygame.Surface, x: int, y: int,
-                          color: tuple[int, int, int], frame: int) -> None:
+                          color: tuple[int, int, int], frame: int,
+                          look: AlienLook | None = None) -> None:
+        look = look or DEFAULT_LOOK
         w, h = ALIEN_W, ALIEN_H
+        dark = (20, 20, 35)
         body = pygame.Rect(x + 4, y + 2, w - 8, h - 10)
-        pygame.draw.rect(surface, color, body, border_radius=4)
-        # antennae / head bumps
-        pygame.draw.rect(surface, color, (x + 2, y, 6, 6), border_radius=2)
-        pygame.draw.rect(surface, color, (x + w - 8, y, 6, 6), border_radius=2)
-        # eyes
-        pygame.draw.rect(surface, (20, 20, 35), (x + 10, y + 8, 4, 4))
-        pygame.draw.rect(surface, (20, 20, 35), (x + w - 14, y + 8, 4, 4))
-        # legs alternate between two frames
-        if frame == 0:
-            pygame.draw.rect(surface, color, (x, y + h - 7, 7, 6))
-            pygame.draw.rect(surface, color, (x + w - 7, y + h - 7, 7, 6))
+        pygame.draw.rect(surface, color, body, border_radius=look.roundness)
+
+        # Headgear.
+        if look.antenna == 0:      # twin pods
+            pygame.draw.rect(surface, color, (x + 2, y, 6, 6), border_radius=2)
+            pygame.draw.rect(surface, color, (x + w - 8, y, 6, 6), border_radius=2)
+        elif look.antenna == 1:    # swept horns
+            pygame.draw.polygon(surface, color,
+                                ((x + 5, y + 5), (x + 1, y - 2), (x + 11, y + 1)))
+            pygame.draw.polygon(surface, color,
+                                ((x + w - 5, y + 5), (x + w - 1, y - 2),
+                                 (x + w - 11, y + 1)))
+        elif look.antenna == 2:    # single crest
+            pygame.draw.rect(surface, color, (x + 12, y - 2, 10, 8),
+                             border_radius=4)
+        else:                      # side fins
+            pygame.draw.rect(surface, color, (x, y + 7, 4, 9), border_radius=1)
+            pygame.draw.rect(surface, color, (x + w - 4, y + 7, 4, 9), border_radius=1)
+
+        # Eyes.
+        if look.eyes == 0:
+            pygame.draw.rect(surface, dark, (x + 10, y + 8, 4, 4))
+            pygame.draw.rect(surface, dark, (x + w - 14, y + 8, 4, 4))
+        elif look.eyes == 1:       # visor
+            pygame.draw.rect(surface, dark, (x + 9, y + 9, w - 18, 3),
+                             border_radius=1)
+        elif look.eyes == 2:       # round eyes
+            pygame.draw.circle(surface, dark, (x + 12, y + 10), 2)
+            pygame.draw.circle(surface, dark, (x + w - 12, y + 10), 2)
+        else:                      # mono-eye
+            pygame.draw.circle(surface, dark, (x + w // 2, y + 10), 4)
+            pygame.draw.circle(surface, (240, 245, 255),
+                               (x + w // 2 - 1, y + 9), 1)
+
+        if look.stripe:
+            stripe = tuple(min(255, int(c + (255 - c) * 0.45)) for c in color)
+            pygame.draw.rect(surface, stripe, (x + 6, y + 13, w - 12, 2),
+                             border_radius=1)
+
+        # Legs, alternating between two frames.
+        if look.legs == 0:
+            if frame == 0:
+                pygame.draw.rect(surface, color, (x, y + h - 7, 7, 6))
+                pygame.draw.rect(surface, color, (x + w - 7, y + h - 7, 7, 6))
+            else:
+                pygame.draw.rect(surface, color, (x + 6, y + h - 7, 7, 7))
+                pygame.draw.rect(surface, color, (x + w - 13, y + h - 7, 7, 7))
+        elif look.legs == 1:
+            step = 0 if frame == 0 else 3
+            pygame.draw.rect(surface, color, (x + 8 + step, y + h - 7, 5, 7))
+            pygame.draw.rect(surface, color, (x + w - 13 - step, y + h - 7, 5, 7))
         else:
-            pygame.draw.rect(surface, color, (x + 6, y + h - 7, 7, 7))
-            pygame.draw.rect(surface, color, (x + w - 13, y + h - 7, 7, 7))
+            step = 0 if frame == 0 else 2
+            pygame.draw.polygon(surface, color,
+                                ((x + 7, y + h - 8), (x + 3 + step, y + h),
+                                 (x + 13, y + h - 8)))
+            pygame.draw.polygon(surface, color,
+                                ((x + w - 7, y + h - 8),
+                                 (x + w - 3 - step, y + h),
+                                 (x + w - 13, y + h - 8)))
 
     def draw_shields(self, surface: pygame.Surface) -> None:
         for s in self.shields:
@@ -199,6 +321,15 @@ class RenderMixin:
             pygame.draw.circle(surface, colour,
                                (int(ring[0]), int(ring[1])), int(ring[2]), 2)
 
+    def draw_popups(self, surface: pygame.Surface) -> None:
+        """Rising, fading "+points" numbers over where they were earned."""
+        for x, y, text, colour, life, total in self.popups:
+            fade = max(0.0, min(1.0, life / total))
+            label = self.font_tiny.render(text, True, colour)
+            # Solid for the first half of its life, then fade away.
+            label.set_alpha(int(255 * min(1.0, fade * 2.0)))
+            surface.blit(label, (int(x) - label.get_width() // 2, int(y)))
+
     def draw_hud(self, surface: pygame.Surface) -> None:
         # Live record: follows the running score the moment it passes the board.
         best = max(self.leaderboard.best, self.score)
@@ -212,6 +343,17 @@ class RenderMixin:
             label = self.font_small.render(
                 f"({self.music_genre})", True, (80, 88, 130))
             surface.blit(label, (WIDTH // 2 - label.get_width() // 2, 44))
+
+        # Fleet progress: the whole formation as a dot map, dimmed where the
+        # ranks have been thinned out.  8x4 cells of 4px with a 1px gutter fit
+        # under the score without reaching the playfield.
+        for a in self.aliens:
+            cell = 4
+            x = LEFT_WALL + a.col * (cell + 1)
+            y = 45 + a.row * (cell + 1)
+            colour = (ROW_COLORS[a.row % len(ROW_COLORS)] if a.alive
+                      else (40, 44, 68))
+            pygame.draw.rect(surface, colour, (x, y, cell, 3))
 
         # lives as tiny ships, right-aligned
         for i in range(max(0, self.lives)):

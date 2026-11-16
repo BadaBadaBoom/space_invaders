@@ -155,6 +155,7 @@ def main() -> int:
         dt = clock.tick(FPS) / 1000.0
         music_player.update()
         news_feed.update()
+        game.update_feedback(dt)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:

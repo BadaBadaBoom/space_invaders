@@ -39,10 +39,14 @@ from config import (
     PLAYER_FIRE_COOLDOWN,
     PLAYER_SPEED,
     PLAYER_W,
+    POPUP_LIFE,
     RIGHT_WALL,
     ROW_COLORS,
     ROW_POINTS,
     ROWS,
+    SHAKE_DRIFTER,
+    SHAKE_LIFE_LOST,
+    SHAKE_RECORD,
     SHIELD_W,
     SHIELD_Y,
     SHIELDS,
@@ -117,6 +121,10 @@ class Game(RenderMixin):
         self.bunker_cells_total = 0  # cells deployed across all waves this run
         self.last_rank: int | None = None
         self.pending_record = False
+        # Presentation-only feedback: screen shake and floating score numbers.
+        self.shake_energy = 0.0
+        self.shake_phase = 0.0
+        self.popups: list[list] = []
         # NASA story card for the game-over screen (set by main).
         self.story = None
         # Snapshot the board's best so this run can celebrate beating it once.
@@ -361,6 +369,8 @@ class Game(RenderMixin):
                 killed = True
                 self.shots_hit += 1
                 self.score += d.value
+                self.spawn_popup(d.x + d.size / 2, d.y, f"+{d.value}",
+                                 (d.palette or [(255, 255, 255)])[0])
             else:
                 keep.append(b)
         self.player_bullets = keep
@@ -431,6 +441,7 @@ class Game(RenderMixin):
         except ValueError:
             pass
         self.avatars_killed += 1
+        self.add_shake(SHAKE_DRIFTER)
         self.explode(d.x + d.size / 2, d.y + d.size / 2, d.palette)
         self.drifter_timer = DRIFTER_RESPAWN
 
@@ -486,6 +497,7 @@ class Game(RenderMixin):
                 or self.score <= self.record_to_beat):
             return
         self.record_beaten = True
+        self.add_shake(SHAKE_RECORD)
         self.play("record")
         alive = self.alive_aliens()
         for a in self.rng.sample(alive, len(alive) // 2):
@@ -524,9 +536,13 @@ class Game(RenderMixin):
             else:
                 hit.alive = False
                 self.shots_hit += 1
-                self.score += ROW_POINTS[hit.row]
+                points = ROW_POINTS[hit.row]
+                self.score += points
                 self.play("hit")
                 self.spawn_debris(hit)
+                self.spawn_popup(hit.x + ALIEN_W / 2, hit.y,
+                                 f"+{points}",
+                                 ROW_COLORS[hit.row % len(ROW_COLORS)])
         self.player_bullets = surviving
 
         # Alien bullets: bunkers first, then the player.
@@ -576,6 +592,11 @@ class Game(RenderMixin):
                                 math.sin(angle) * speed, life, life,
                                 (255, 230, 160), 3])
 
+    def spawn_popup(self, x: float, y: float, text: str,
+                    colour: tuple[int, int, int]) -> None:
+        """A rising score number that fades out where points were earned."""
+        self.popups.append([x, y, text, colour, POPUP_LIFE, POPUP_LIFE])
+
     def spawn_sparks(self, x: float, y: float) -> None:
         for _ in range(4):
             angle = self.rng.uniform(0, math.tau)
@@ -591,6 +612,7 @@ class Game(RenderMixin):
 
     def player_hit(self) -> None:
         self.lives -= 1
+        self.add_shake(SHAKE_LIFE_LOST)
         self.alien_bullets.clear()
         self.player_bullets.clear()
         self.player.x = WIDTH / 2 - PLAYER_W / 2
@@ -640,6 +662,7 @@ class Game(RenderMixin):
         self.score += 100
         self.play("wave")
         self.spawn_wave()
+        self.spawn_popup(WIDTH / 2, HEIGHT / 2, "+100", (255, 220, 120))
 
     def toggle_pause(self) -> None:
         if self.state == "playing":
@@ -670,16 +693,19 @@ class Game(RenderMixin):
 
     def present(self, screen: pygame.Surface) -> None:
         """Blit the fixed 800x600 canvas onto any window/fullscreen size."""
+        dx, dy = self.shake_offset()
         sw, sh = screen.get_size()
         if (sw, sh) == (WIDTH, HEIGHT):
-            screen.blit(self.canvas, (0, 0))
+            if dx or dy:
+                screen.fill((0, 0, 0))
+            screen.blit(self.canvas, (dx, dy))
             return
         scale = min(sw / WIDTH, sh / HEIGHT)
         w = max(1, int(WIDTH * scale))
         h = max(1, int(HEIGHT * scale))
         screen.fill((0, 0, 0))
         screen.blit(pygame.transform.smoothscale(self.canvas, (w, h)),
-                    ((sw - w) // 2, (sh - h) // 2))
+                    ((sw - w) // 2 + dx, (sh - h) // 2 + dy))
 
     def update_effects(self, dt: float) -> None:
         for d in self.debris:
