@@ -48,6 +48,8 @@ class Story:
     summary: str
     link: str
     image_url: str
+    kind: str = ""
+    read_time: str = ""
     image: pygame.Surface | None = field(default=None, repr=False,
                                          compare=False)
     image_data: bytes | None = field(default=None, repr=False, compare=False)
@@ -120,6 +122,12 @@ def parse_items(markup: str) -> list[Story]:
         img_m = re.search(r'<img[^>]*?src="([^"]+)"', chunk)
         summary_m = re.search(
             r'<p class="margin-top-0 margin-bottom-1">(.*?)</p>', chunk, re.DOTALL)
+        read_m = re.search(
+            r'<div class="hds-content-item-readtime[^"]*"[^>]*>(.*?)</div>',
+            chunk, re.DOTALL)
+        kind_m = re.search(
+            r'<div class="display-flex flex-align-center label[^"]*"[^>]*>.*?'
+            r'<span>(.*?)</span>', chunk, re.DOTALL)
         if not (title_m and link_m):
             continue
         title = _text(title_m.group(1))
@@ -128,8 +136,11 @@ def parse_items(markup: str) -> list[Story]:
             continue
         image_url = _image_variant(img_m.group(1)) if img_m else ""
         summary = _text(summary_m.group(1)) if summary_m else ""
-        stories.append(Story(title=title, summary=_trim(summary),
-                             link=link, image_url=image_url))
+        stories.append(Story(
+            title=title, summary=_trim(summary), link=link,
+            image_url=image_url,
+            kind=_text(kind_m.group(1)) if kind_m else "",
+            read_time=_text(read_m.group(1)) if read_m else ""))
     return stories
 
 
@@ -398,6 +409,7 @@ class NewsFeed:
                     image_data = None
             loaded = Story(title=story.title, summary=_trim(summary),
                            link=story.link, image_url=story.image_url,
+                           kind=story.kind, read_time=story.read_time,
                            image_data=image_data)
             result = ("story", index, loaded)
         except Exception as exc:  # noqa: BLE001 - offline is not a crash
