@@ -9,11 +9,14 @@ import pygame
 
 from deps import metal
 
+DEFAULT_VOLUME = 0.32
+VOLUME_STEP = 0.1
+
 
 class MusicPlayer:
     """Composes tracks on a worker thread and loops them, crossfaded."""
 
-    def __init__(self, enabled: bool = True, volume: float = 0.32) -> None:
+    def __init__(self, enabled: bool = True, volume: float = DEFAULT_VOLUME) -> None:
         self.volume = max(0.0, min(1.0, volume))
         self.muted = False
         self.enabled = bool(enabled and metal is not None
@@ -72,7 +75,7 @@ class MusicPlayer:
             sound = pygame.mixer.Sound(buffer=data)
         except Exception:  # noqa: BLE001 - keep the old track playing
             return
-        new_volume = 0.0 if self.muted else self.volume
+        new_volume = self.level
         old = self.channels[self.active]
         new = self.channels[1 - self.active]
         old.fadeout(600)
@@ -81,8 +84,37 @@ class MusicPlayer:
         self.active = 1 - self.active
         self.current = sound
 
+    def _apply_volume(self) -> None:
+        level = self.level
+        for ch in self.channels:
+            ch.set_volume(level)
+
+    def set_volume(self, volume: float) -> float:
+        """Set the music volume, clamped to 0.0 - 1.0, and return it."""
+        self.volume = max(0.0, min(1.0, float(volume)))
+        if self.volume > 0.0:
+            self.muted = False
+        self._apply_volume()
+        return self.volume
+
+    def change_volume(self, delta: float) -> float:
+        """Nudge the volume by *delta*; turning it up also clears mute."""
+        if delta > 0.0:
+            self.muted = False
+        self.volume = max(0.0, min(1.0, self.volume + delta))
+        self._apply_volume()
+        return self.volume
+
+    @property
+    def level(self) -> float:
+        """Effective output level, with mute folded in."""
+        return 0.0 if self.muted else self.volume
+
+    @property
+    def volume_percent(self) -> int:
+        return round(self.volume * 100)
+
     def toggle_mute(self) -> bool:
         self.muted = not self.muted
-        for ch in self.channels:
-            ch.set_volume(0.0 if self.muted else self.volume)
+        self._apply_volume()
         return self.muted
