@@ -55,6 +55,7 @@ def selftest(seconds: float) -> int:
     check_shields(scores)
     check_drifters(scores)
     check_leaderboard()
+    check_record_celebration()
     check_stats()
     check_scaling(game)
     check_backgrounds(scores)
@@ -302,6 +303,62 @@ def check_leaderboard() -> None:
         ]), encoding="utf-8")
         loaded = Leaderboard(path).entries
         assert len(loaded) == 1 and loaded[0]["wave"] == 4
+
+
+def check_record_celebration() -> None:
+    """The board's best is shown live and beaten with one celebration."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="space_invaders_record_") as tmp:
+        board = Leaderboard(Path(tmp) / "board.json")
+        assert board.best == 0, "empty board should report no best score"
+
+        # An empty board has no record to beat, so nothing may trigger.
+        empty = Game(seed=3, leaderboard=board)
+        empty.start()
+        assert empty.record_to_beat == 0
+        empty.score = 500
+        empty.maybe_celebrate_record()
+        assert not empty.record_beaten
+        assert len(empty.alive_aliens()) == 32, "empty board celebrated"
+
+        board.add({"score": 500, "wave": 4, "avatars": 2,
+                   "bunker": 20.0, "accuracy": 50.0})
+        assert board.best == 500
+
+        game = Game(seed=11, leaderboard=board)
+        game.start()
+        assert game.record_to_beat == 500 and not game.record_beaten
+        if metal is not None and pygame.mixer.get_init():
+            assert "record" in game.sounds, "record boom was not pre-rendered"
+
+        before = len(game.alive_aliens())
+        debris_before = len(game.debris)
+        game.score = 500
+        game.maybe_celebrate_record()
+        assert not game.record_beaten, "celebrated on a tie"
+        assert len(game.alive_aliens()) == before
+
+        game.score = 501
+        game.maybe_celebrate_record()
+        popped = before - len(game.alive_aliens())
+        assert game.record_beaten, "record was not celebrated"
+        assert popped == before // 2, f"expected half the formation, got {popped}"
+        assert len(game.debris) > debris_before, "no explosion debris"
+        assert game.score == 501, "celebration awarded points"
+
+        remaining = len(game.alive_aliens())
+        game.maybe_celebrate_record()
+        assert len(game.alive_aliens()) == remaining, "celebration repeated"
+
+        # Two survivors: floor division pops one and leaves the wave intact.
+        edge = Game(seed=11, leaderboard=board)
+        edge.start()
+        for alien in edge.alive_aliens()[2:]:
+            alien.alive = False
+        edge.score = 501
+        edge.maybe_celebrate_record()
+        assert len(edge.alive_aliens()) == 1, "celebration cleared the wave"
 
 
 def check_stats() -> None:

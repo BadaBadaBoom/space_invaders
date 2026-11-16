@@ -172,7 +172,7 @@ Without `--export-genre` the genre is chosen at random.
 ## Avatar hazards
 
 `~/avatars/image_79efc5be.jpeg` is a 3×2 contact sheet of six round badges.
-At startup the game slices it into six individual sprites (46×46 px — a little
+At startup the game slices it into six individual sprites (39×39 px — a little
 larger than an alien ship, 34×24). The sheet's flat white background is cut
 away outside each badge circle, so the artwork inside keeps its white details,
 and the most common vivid colours of each badge are sampled to tint its
@@ -307,6 +307,12 @@ Press `L` from the title, pause, game-over or gameplay to open the table; use
 `Up`/`Down` (or `PageUp`/`PageDown`) to scroll through all 100 places and
 `L`/`Esc` to go back. Your latest run is highlighted in the table, and the
 game-over screen shows the run's numbers plus its new rank.
+
+During play the record is shown live as `BEST` above your running score, and it
+follows you once you pass it. The moment a run beats the board's best, half the
+remaining aliens (rounded down, so the wave always keeps at least one) explode
+in their row colours and a 2.2-second synthesized blast plays. It happens once
+per run, and an empty board simply has no record to beat.
 
 ## Headless smoke test
 
