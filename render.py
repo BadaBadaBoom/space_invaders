@@ -145,7 +145,15 @@ class RenderMixin:
 
     def draw_drifters(self, surface: pygame.Surface) -> None:
         for d in self.drifters:
-            surface.blit(d.image, (int(d.x), int(d.y)))
+            fade = getattr(d, "fade", 1.0)
+            if fade < 1.0:
+                # fade multiplies the sprite's own alpha: copy so the shared
+                # alpha-cut image is never modified.
+                image = d.image.copy()
+                image.set_alpha(max(0, min(255, round(255 * fade))))
+                surface.blit(image, (int(d.x), int(d.y)))
+            else:
+                surface.blit(d.image, (int(d.x), int(d.y)))
 
     def draw_bullets(self, surface: pygame.Surface) -> None:
         for b in self.player_bullets:
@@ -320,6 +328,8 @@ class RenderMixin:
             if story is not None:
                 self.draw_gameover_story(surface, story)
                 return
+            # Offline layout has no clickable link.
+            self.story_link_rect = None
             stats = self.run_stats()
             title = self.font_big.render("GAME OVER", True, (255, 110, 130))
             score = self.font_mid.render(
@@ -394,10 +404,44 @@ class RenderMixin:
             surface.blit(label, (384, 234 + i * 22))
 
         summary_y = 234 + len(heading_lines) * 22 + 16
+        # Leave room for the attribution (460) and link (482) rows.
+        max_lines = max(0, (452 - summary_y) // 17)
         for i, text in enumerate(wrap_text(
-                self.font_tiny, story.summary, 368, 10)):
+                self.font_tiny, story.summary, 368, max_lines)):
             label = self.font_tiny.render(text, True, UI_COLOR)
             surface.blit(label, (384, summary_y + i * 17))
+
+        kind = getattr(story, "kind", "")
+        read_time = getattr(story, "read_time", "")
+        attribution = "NASA"
+        if kind:
+            attribution += f" · {kind}"
+        if read_time:
+            attribution += f" · {read_time}"
+        label = self.font_tiny.render(attribution, True, UI_DIM)
+        surface.blit(label, (48, 460))
+
+        link = getattr(story, "link", "") or ""
+        if link:
+            click = self.font_tiny.render("click to open", True, UI_DIM)
+            surface.blit(click, (752 - click.get_width(), 460))
+
+        text = link
+        if text.startswith("https://"):
+            text = text[len("https://"):]
+        elif text.startswith("http://"):
+            text = text[len("http://"):]
+        lines = wrap_text(self.font_tiny, text, 704, 1)
+        text = lines[0] if lines else ""
+        if text:
+            label = self.font_tiny.render(text, True, (130, 200, 255))
+            surface.blit(label, (48, 482))
+            text_width = label.get_width()
+            pygame.draw.line(surface, (90, 130, 170),
+                             (48, 498), (48 + text_width, 498), 1)
+            self.story_link_rect = pygame.Rect(48, 482, text_width, 17)
+        else:
+            self.story_link_rect = None
 
         hint = self.font_small.render(
             "press ENTER to play again", True, (255, 220, 120))
@@ -406,3 +450,15 @@ class RenderMixin:
             "press L for high scores", True, UI_DIM)
         surface.blit(scores_hint,
                      (WIDTH // 2 - scores_hint.get_width() // 2, 546))
+
+    def canvas_point(self, window_size, pos):
+        """Map a window pixel back onto the 800x600 canvas."""
+        sw, sh = window_size
+        if (sw, sh) == (WIDTH, HEIGHT):
+            return pos
+        scale = min(sw / WIDTH, sh / HEIGHT)
+        w = max(1, int(WIDTH * scale))
+        h = max(1, int(HEIGHT * scale))
+        ox = (sw - w) // 2
+        oy = (sh - h) // 2
+        return ((pos[0] - ox) / scale, (pos[1] - oy) / scale)
