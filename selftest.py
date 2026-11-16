@@ -62,6 +62,7 @@ def selftest(seconds: float) -> int:
     check_news()
     check_stats()
     check_scaling(game)
+    check_crt()
     check_backgrounds(scores)
     check_music()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -648,6 +649,46 @@ def check_music() -> None:
     for previous in metal.GENRES:
         for _ in range(12):
             assert metal.pick_genre(previous, random.Random(3)) != previous
+
+
+def check_crt() -> None:
+    """The CRT pass is deterministic, sized, and a true no-op when off."""
+    from crt import PRESETS, CrtOverlay
+
+    assert tuple(PRESETS) == ("off", "low", "medium", "high")
+    try:
+        CrtOverlay((64, 48), preset="nope")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("unknown CRT preset was accepted")
+
+    def frame(preset: str, passes: int = 1) -> tuple:
+        surface = pygame.Surface((160, 120))
+        surface.fill((40, 70, 110))
+        for x in range(0, 160, 7):
+            pygame.draw.line(surface, (220, 90, 40), (x, 0), (x, 119))
+        overlay = CrtOverlay((160, 120), preset=preset, seed=5)
+        for step in range(passes):
+            overlay.apply_inplace(surface, t=1.25 + step * 0.1)
+        return surface.get_size(), pygame.image.tobytes(surface, "RGB")
+
+    off = frame("off")
+    medium = frame("medium")
+    assert off[0] == medium[0] == (160, 120)
+    assert off[1] != medium[1], "medium preset did not change the frame"
+
+    reference = pygame.Surface((160, 120))
+    reference.fill((40, 70, 110))
+    for x in range(0, 160, 7):
+        pygame.draw.line(reference, (220, 90, 40), (x, 0), (x, 119))
+    before = pygame.image.tobytes(reference, "RGB")
+    CrtOverlay((160, 120), preset="off").apply_inplace(reference, t=3.0)
+    assert pygame.image.tobytes(reference, "RGB") == before, "off was not a no-op"
+
+    assert frame("medium", passes=2) == frame("medium", passes=2)
+    assert frame("high", passes=2) == frame("high", passes=2)
+    assert frame("high", passes=2) != frame("medium", passes=2)
 
 
 def check_backgrounds(leaderboard: Leaderboard | None = None) -> None:
