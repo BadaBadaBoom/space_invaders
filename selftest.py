@@ -65,6 +65,7 @@ def selftest(seconds: float) -> int:
     check_crt()
     check_backgrounds(scores)
     check_music()
+    check_music_player()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
 
     dt = 1 / 60
@@ -649,6 +650,52 @@ def check_music() -> None:
     for previous in metal.GENRES:
         for _ in range(12):
             assert metal.pick_genre(previous, random.Random(3)) != previous
+
+
+def check_music_player() -> None:
+    """Numpad + switches genre, and prepare() is idempotent."""
+    import audio
+
+    calls: list[str | None] = []
+
+    class FakeMetal:
+        GENRES = ("metal", "jazz", "disco")
+
+        @staticmethod
+        def compose(seed, genre=None):
+            calls.append(genre)
+            return b"\0\0" * 4410
+
+        @staticmethod
+        def pick_genre(previous=None):
+            return next(genre for genre in FakeMetal.GENRES
+                        if genre != previous)
+
+    real = audio.metal
+    audio.metal = FakeMetal
+    try:
+        player = audio.MusicPlayer(enabled=False)
+        player.enabled = True
+        player.channels = []
+        player.request("jazz")
+        assert player.genre == "jazz"
+        player.next_track()
+        assert player.genre != "jazz", "next song kept the genre"
+        if player.thread is not None:
+            player.thread.join(2)
+
+        before = calls.count("metal")
+        player.prepare("metal")
+        player.prepare("metal")
+        if player.prepare_thread is not None:
+            player.prepare_thread.join(2)
+        assert calls.count("metal") == before + 1, (
+            "prepare was not idempotent")
+
+        player.request("metal")
+        assert player.pending is not None, "prepared track was not consumed"
+    finally:
+        audio.metal = real
 
 
 def check_crt() -> None:

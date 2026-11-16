@@ -109,7 +109,7 @@ and painted backdrops, but no soundtrack.
 | `L` | High-score leaderboard (up/down to scroll) |
 | `M` | Mute / unmute music |
 | `↑` / `↓` | Music volume up / down (10% steps) |
-| numpad `+` | Next song (new composition, same genre) |
+| numpad `+` | Next song (new genre and composition) |
 | `F3` | CRT filter: off / low / medium / high |
 | `[` / `]` | CRT intensity down / up (10% steps) |
 | `F11` or `Alt+Enter` | Fullscreen on/off |
@@ -137,6 +137,10 @@ play before any repeats, and two waves in a row never share one:
 | `jazz` | walking bass, swung ride cymbal, smoky e-piano comping |
 | `ambient` | slow drifting pads, sub-bass, distant bells |
 | `disco` | four-on-the-floor kick, octave bass, sweeping string stabs |
+
+The numpad `+` key skips to a fresh composition in a different genre; the HUD
+label follows the track, and that wave's pre-picked next genre is refreshed if
+it collides.
 
 Within a genre, each composition randomizes:
 
