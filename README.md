@@ -10,10 +10,31 @@ music is synthesized from scratch at runtime. The only optional asset is the
 avatar sheet used for the hazards.
 
 ```
-main.py    the game and its state machines
-covers.py  the procedural 1960s paperback-cover painter
-music.py   the genre composers / synthesizer
+main.py        bootstrap, CLI, input, and the event loop
+config.py      constants, colours, and file paths
+deps.py        optional music/covers/numpy imports
+assets.py      fonts, avatar tiles, cover delegation, tone blips
+entities.py    bullets, aliens, player, bunkers, avatar hazards
+leaderboard.py persistent top-100 table
+audio.py       MusicPlayer worker thread and mixer channels
+render.py      RenderMixin: playfield, HUD, leaderboard, overlays
+game.py        Game state, collisions, waves, and scoring
+selftest.py    headless smoke tests and invariant checks
+covers.py      procedural 1960s paperback-cover painter
+music.py       genre composers / synthesizer
 ```
+
+Dependencies point one way:
+
+```text
+config -> assets -> entities -> render -> game -> main
+leaderboard ------------------^
+audio ------------------------^
+```
+
+That keeps each concern in its own file, so parallel work can be split by
+module without two editors touching the same code.
+
 
 ## Run
 

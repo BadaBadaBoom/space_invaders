@@ -1,0 +1,289 @@
+"""Playfield, HUD, leaderboard, and overlay rendering."""
+
+from __future__ import annotations
+
+import math
+
+import pygame
+
+from config import (
+    ALIEN_BULLET_COLOR,
+    ALIEN_H,
+    ALIEN_W,
+    BG_BOTTOM,
+    BG_TOP,
+    FIELD_TOP,
+    FLOOR_Y,
+    HEIGHT,
+    LEADERBOARD_ROWS,
+    LEFT_WALL,
+    PLAYER_BULLET_COLOR,
+    PLAYER_COLOR,
+    PLAYER_W,
+    RIGHT_WALL,
+    ROW_COLORS,
+    UI_COLOR,
+    UI_DIM,
+    WIDTH,
+)
+
+
+class RenderMixin:
+    def draw(self, surface: pygame.Surface) -> None:
+        self.draw_background(surface)
+        self.draw_walls(surface)
+        if self.state not in ("title", "scores"):
+            self.draw_aliens(surface)
+            self.draw_shields(surface)
+            self.draw_drifters(surface)
+            self.draw_bullets(surface)
+            self.draw_player(surface)
+            self.draw_debris(surface)
+            self.draw_hud(surface)
+        self.draw_overlay(surface)
+
+    def draw_background(self, surface: pygame.Surface) -> None:
+        for y in range(0, HEIGHT, 6):
+            t = y / HEIGHT
+            color = tuple(int(BG_TOP[i] + (BG_BOTTOM[i] - BG_TOP[i]) * t) for i in range(3))
+            pygame.draw.rect(surface, color, (0, y, WIDTH, 6))
+        if self.pulp_bg is not None:
+            surface.blit(self.pulp_bg, (0, 0))
+        for x, y, size, speed in self.stars:
+            twinkle = 90 + int(80 * (0.5 + 0.5 * math.sin(pygame.time.get_ticks() / 900 + speed)))
+            pygame.draw.rect(surface, (twinkle, twinkle, min(255, twinkle + 40)),
+                             (int(x), int(y), size, size))
+
+    def draw_walls(self, surface: pygame.Surface) -> None:
+        for x in (LEFT_WALL, RIGHT_WALL):
+            pygame.draw.line(surface, (45, 55, 95), (x, FIELD_TOP), (x, FLOOR_Y), 2)
+        pygame.draw.line(surface, (45, 55, 95), (LEFT_WALL, FLOOR_Y),
+                         (RIGHT_WALL, FLOOR_Y), 2)
+
+    def draw_aliens(self, surface: pygame.Surface) -> None:
+        frame = int(self.alien_anim) % 2
+        for a in self.aliens:
+            if not a.alive:
+                continue
+            color = ROW_COLORS[a.row % len(ROW_COLORS)]
+            x, y = int(a.x), int(a.y)
+            self.draw_alien_sprite(surface, x, y, color, frame)
+
+    def draw_alien_sprite(self, surface: pygame.Surface, x: int, y: int,
+                          color: tuple[int, int, int], frame: int) -> None:
+        w, h = ALIEN_W, ALIEN_H
+        body = pygame.Rect(x + 4, y + 2, w - 8, h - 10)
+        pygame.draw.rect(surface, color, body, border_radius=4)
+        # antennae / head bumps
+        pygame.draw.rect(surface, color, (x + 2, y, 6, 6), border_radius=2)
+        pygame.draw.rect(surface, color, (x + w - 8, y, 6, 6), border_radius=2)
+        # eyes
+        pygame.draw.rect(surface, (20, 20, 35), (x + 10, y + 8, 4, 4))
+        pygame.draw.rect(surface, (20, 20, 35), (x + w - 14, y + 8, 4, 4))
+        # legs alternate between two frames
+        if frame == 0:
+            pygame.draw.rect(surface, color, (x, y + h - 7, 7, 6))
+            pygame.draw.rect(surface, color, (x + w - 7, y + h - 7, 7, 6))
+        else:
+            pygame.draw.rect(surface, color, (x + 6, y + h - 7, 7, 7))
+            pygame.draw.rect(surface, color, (x + w - 13, y + h - 7, 7, 7))
+
+    def draw_shields(self, surface: pygame.Surface) -> None:
+        for s in self.shields:
+            s.draw(surface)
+
+    def draw_drifters(self, surface: pygame.Surface) -> None:
+        for d in self.drifters:
+            surface.blit(d.image, (int(d.x), int(d.y)))
+
+    def draw_bullets(self, surface: pygame.Surface) -> None:
+        for b in self.player_bullets:
+            r = b.rect()
+            pygame.draw.rect(surface, PLAYER_BULLET_COLOR, r, border_radius=2)
+            glow = pygame.Surface((r.width + 8, r.height + 8), pygame.SRCALPHA)
+            pygame.draw.rect(glow, (*PLAYER_BULLET_COLOR, 60), glow.get_rect(), border_radius=4)
+            surface.blit(glow, (r.x - 4, r.y - 4))
+        for b in self.alien_bullets:
+            r = b.rect()
+            pygame.draw.rect(surface, ALIEN_BULLET_COLOR, r, border_radius=3)
+
+    def draw_player(self, surface: pygame.Surface) -> None:
+        p = self.player
+        if p.invulnerable > 0 and int(p.invulnerable * 12) % 2 == 0:
+            return
+        x, y = int(p.x), int(p.y)
+        pygame.draw.rect(surface, PLAYER_COLOR, (x + 16, y, 14, 6), border_radius=2)
+        pygame.draw.rect(surface, PLAYER_COLOR, (x + 4, y + 6, PLAYER_W - 8, 6))
+        pygame.draw.rect(surface, PLAYER_COLOR, (x, y + 12, PLAYER_W, 6), border_radius=3)
+        pygame.draw.rect(surface, (10, 30, 22), (x + 20, y + 2, 6, 4))
+
+    def draw_debris(self, surface: pygame.Surface) -> None:
+        for flash in self.flashes:
+            fade = max(0.0, min(1.0, flash[2] / flash[3]))
+            glow = fade ** 0.6
+            colour = (int(flash[4][0] * glow), int(flash[4][1] * glow),
+                      int(flash[4][2] * glow))
+            radius = int(flash[5] * fade)
+            if radius > 0:
+                pygame.draw.circle(surface, colour,
+                                   (int(flash[0]), int(flash[1])), radius)
+        for d in self.debris:
+            fade = max(0.0, min(1.0, d[4] / d[5]))
+            colour = (int(d[6][0] * fade), int(d[6][1] * fade),
+                      int(d[6][2] * fade))
+            size = int(d[7])
+            pygame.draw.rect(surface, colour, (int(d[0]), int(d[1]), size, size))
+        for ring in self.rings:
+            fade = max(0.0, min(1.0, ring[3] / 0.34))
+            colour = (int(ring[4][0] * fade), int(ring[4][1] * fade),
+                      int(ring[4][2] * fade))
+            pygame.draw.circle(surface, colour,
+                               (int(ring[0]), int(ring[1])), int(ring[2]), 2)
+
+    def draw_hud(self, surface: pygame.Surface) -> None:
+        score = self.font_small.render(f"SCORE {self.score:05d}", True, UI_COLOR)
+        wave = self.font_small.render(f"WAVE {self.wave}", True, UI_DIM)
+        surface.blit(score, (LEFT_WALL, 24))
+        surface.blit(wave, (WIDTH // 2 - wave.get_width() // 2, 24))
+        if self.music_genre:
+            label = self.font_small.render(
+                f"({self.music_genre})", True, (80, 88, 130))
+            surface.blit(label, (WIDTH // 2 - label.get_width() // 2, 44))
+
+        # lives as tiny ships, right-aligned
+        for i in range(max(0, self.lives)):
+            x = RIGHT_WALL - 26 * (i + 1)
+            pygame.draw.rect(surface, PLAYER_COLOR, (x, 28, 20, 4), border_radius=2)
+            pygame.draw.rect(surface, PLAYER_COLOR, (x + 4, 24, 12, 4), border_radius=2)
+
+    def draw_leaderboard(self, surface: pygame.Surface) -> None:
+        """Scrollable top-100 table of run scores and shooting stats."""
+        title = self.font_big.render("HIGH SCORES", True, (255, 240, 190))
+        surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 16))
+        caption = self.font_tiny.render(
+            "BUNKER % = BUNKER CELLS WRECKED BY YOUR OWN BULLETS",
+            True, UI_DIM)
+        surface.blit(caption, (WIDTH // 2 - caption.get_width() // 2, 84))
+
+        columns = (
+            ("RANK", 90),
+            ("SCORE", 210),
+            ("WAVE", 280),
+            ("AVATARS", 390),
+            ("BUNKER", 530),
+            ("ACCURACY", 690),
+        )
+        for label, right in columns:
+            text = self.font_tiny.render(label, True, (255, 220, 120))
+            surface.blit(text, (right - text.get_width(), 112))
+        pygame.draw.line(surface, (90, 96, 140), (44, 132), (756, 132), 1)
+
+        entries = self.leaderboard.entries
+        if not entries:
+            empty = self.font_mid.render("NO SCORES YET", True, UI_DIM)
+            hint = self.font_small.render(
+                "Finish a run to claim a spot.", True, UI_DIM)
+            surface.blit(empty, (WIDTH // 2 - empty.get_width() // 2, 260))
+            surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 306))
+        else:
+            start = self.score_scroll
+            visible = entries[start:start + LEADERBOARD_ROWS]
+            rank_colors = {1: (255, 225, 120), 2: (220, 225, 240),
+                           3: (230, 170, 120)}
+            for offset, entry in enumerate(visible):
+                rank = start + offset + 1
+                y = 148 + offset * 25
+                highlighted = (self.score_return_state == "gameover"
+                               and rank == self.last_rank)
+                if highlighted:
+                    surface.fill((45, 42, 34), (44, y - 2, 712, 22))
+                colour = rank_colors.get(rank, UI_COLOR)
+                if highlighted:
+                    colour = (255, 230, 140)
+                values = (
+                    (f"{rank}", 90),
+                    (f"{int(entry['score'])}", 210),
+                    (f"{int(entry['wave'])}", 280),
+                    (f"{int(entry['avatars'])}", 390),
+                    (f"{entry['bunker']:.1f}%", 530),
+                    (f"{entry['accuracy']:.1f}%", 690),
+                )
+                for value, right in values:
+                    text = self.font_small.render(value, True, colour)
+                    surface.blit(text, (right - text.get_width(), y))
+
+            end = start + len(visible)
+            footer = self.font_tiny.render(
+                f"SHOWING {start + 1}-{end} OF {len(entries)}", True, UI_DIM)
+            surface.blit(footer, (WIDTH // 2 - footer.get_width() // 2, 540))
+
+        hint = self.font_tiny.render(
+            "UP / DOWN  SCROLL      L / ESC  BACK", True, UI_DIM)
+        surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 566))
+
+    def draw_overlay(self, surface: pygame.Surface) -> None:
+        if self.state == "playing":
+            return
+        shade = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        shade.fill((6, 8, 20, 220 if self.state == "scores" else 190))
+        surface.blit(shade, (0, 0))
+
+        if self.state == "scores":
+            self.draw_leaderboard(surface)
+        elif self.state == "title":
+            title = self.font_big.render("SPACE INVADERS", True, (255, 255, 255))
+            surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 170))
+
+            rows = [
+                ("MOVE", "ARROWS  or  A / D"),
+                ("FIRE", "SPACE"),
+                ("PAUSE", "P"),
+                ("SCORES", "L  leaderboard"),
+                ("FULLSCREEN", "F11"),
+                ("MUSIC", "M  mute"),
+                ("QUIT", "ESC"),
+            ]
+            key_x = WIDTH // 2 - 190
+            desc_x = WIDTH // 2 - 30
+            for i, (key, desc) in enumerate(rows):
+                y = 274 + i * 28
+                surface.blit(self.font_small.render(key, True, (255, 220, 120)), (key_x, y))
+                surface.blit(self.font_small.render(desc, True, UI_COLOR), (desc_x, y))
+
+            pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() / 350)
+            start_color = tuple(int(150 + 105 * pulse) for _ in range(3))
+            start = self.font_mid.render("PRESS ENTER TO START", True, start_color)
+            # Below the painted cover title, above the floor line.
+            surface.blit(start, (WIDTH // 2 - start.get_width() // 2, 524))
+        elif self.state == "paused":
+            title = self.font_big.render("PAUSED", True, UI_COLOR)
+            hint = self.font_small.render("press P to resume", True, UI_DIM)
+            surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 250))
+            surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 320))
+        elif self.state == "gameover":
+            stats = self.run_stats()
+            title = self.font_big.render("GAME OVER", True, (255, 110, 130))
+            score = self.font_mid.render(
+                f"Score {self.score}   Wave {self.wave}", True, UI_COLOR)
+            line = self.font_small.render(
+                f"AVATARS KILLED {stats['avatars']}    "
+                f"BUNKERS SHOT {stats['bunker']:.1f}%    "
+                f"ACCURACY {stats['accuracy']:.1f}%", True, UI_COLOR)
+            if self.last_rank is not None:
+                rank = self.font_mid.render(
+                    f"NEW HIGH SCORE  #{self.last_rank}", True,
+                    (255, 225, 120))
+            else:
+                rank = self.font_small.render(
+                    "DID NOT MAKE THE TOP 100", True, UI_DIM)
+            hint = self.font_small.render(
+                "press ENTER to play again", True, (255, 220, 120))
+            scores_hint = self.font_small.render(
+                "press L for high scores", True, UI_DIM)
+            surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 138))
+            surface.blit(score, (WIDTH // 2 - score.get_width() // 2, 220))
+            surface.blit(line, (WIDTH // 2 - line.get_width() // 2, 270))
+            surface.blit(rank, (WIDTH // 2 - rank.get_width() // 2, 304))
+            surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 374))
+            surface.blit(scores_hint,
+                         (WIDTH // 2 - scores_hint.get_width() // 2, 404))

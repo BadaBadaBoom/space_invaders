@@ -1,0 +1,78 @@
+"""Tunable constants, colours, and file paths for Space Invaders."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+WIDTH, HEIGHT = 800, 600
+FPS = 60
+FIELD_TOP = 64
+
+BG_TOP = (8, 10, 26)
+BG_BOTTOM = (18, 12, 34)
+PLAYER_COLOR = (120, 255, 180)
+PLAYER_BULLET_COLOR = (240, 255, 200)
+ALIEN_BULLET_COLOR = (255, 120, 140)
+UI_COLOR = (200, 210, 255)
+UI_DIM = (110, 115, 160)
+
+LEFT_WALL = 40
+RIGHT_WALL = WIDTH - 40
+FLOOR_Y = HEIGHT - 28       # drawn floor line at the bottom of the arena
+PLAYER_W, PLAYER_H = 46, 18
+PLAYER_SPEED = 360.0
+PLAYER_Y = FLOOR_Y - 44     # player sits just above the floor, inside the arena
+LANDING_Y = PLAYER_Y - 10   # aliens crossing this line end the run
+
+ALIEN_W, ALIEN_H = 34, 24
+COLS, ROWS = 8, 4
+GAP_X, GAP_Y = 18, 16
+FORMATION_TOP = 84
+FORMATION_LEFT = (WIDTH - (COLS * ALIEN_W + (COLS - 1) * GAP_X)) // 2
+DROP_DISTANCE = 22
+
+PLAYER_BULLET_SPEED = 620.0
+ALIEN_BULLET_SPEED = 250.0
+PLAYER_FIRE_COOLDOWN = 0.22
+MAX_PLAYER_BULLETS = 3
+
+ROW_COLORS = [
+    (255, 105, 180),  # front row
+    (255, 200, 90),
+    (120, 220, 255),
+    (170, 150, 255),  # back row
+]
+ROW_POINTS = [30, 20, 15, 10]
+
+# Destructible bunkers, built from a grid of small cells so they can erode.
+SHIELDS = 4
+SHIELD_COLS, SHIELD_ROWS, SHIELD_CELL = 22, 16, 3
+SHIELD_W = SHIELD_COLS * SHIELD_CELL
+SHIELD_H = SHIELD_ROWS * SHIELD_CELL
+SHIELD_Y = FLOOR_Y - 148
+SHIELD_TOP_COLOR = (150, 255, 195)
+SHIELD_BOTTOM_COLOR = (55, 150, 115)
+
+# Floating avatar hazards (one sprite sheet, six badges).
+AVATAR_SHEET = Path(os.environ.get(
+    "SPACE_INVADERS_AVATARS", Path.home() / "avatars" / "image_79efc5be.jpeg"))
+DRIFTER_SIZE = 46            # a little larger than an alien (34 x 24)
+DRIFTER_SPEED_MIN, DRIFTER_SPEED_MAX = 70.0, 125.0
+DRIFTER_SPAWN_DELAY = 2.2
+DRIFTER_RESPAWN = 4.5
+DRIFTER_POINTS = 50
+# The badge limit is the wave number: 1 on wave 1, 2 on wave 2, and so on.
+
+# Persistent high-score table.
+LEADERBOARD_SIZE = 100
+LEADERBOARD_ROWS = 15        # visible rows on the scores screen
+SCORES_FILE = Path(os.environ.get(
+    "SPACE_INVADERS_SCORES",
+    Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+    / "space_invaders" / "leaderboard.json",
+)).expanduser()
+
+
+def clamp(value: float, low: float, high: float) -> float:
+    return max(low, min(high, value))
