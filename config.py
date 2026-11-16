@@ -80,6 +80,16 @@ DRIFTER_POINTS = 100          # the most it pays, for a hit at spawn
 DRIFTER_POINTS_MIN = 10       # the least, just before it fades away
 # The badge limit is the wave number: 1 on wave 1, 2 on wave 2, and so on.
 
+# Mystery UFO: a saucer that crosses the top of the arena on a timer.
+UFO_Y = FIELD_TOP + 3
+UFO_W, UFO_H = 46, 18
+UFO_SPEED_MIN, UFO_SPEED_MAX = 70.0, 105.0
+UFO_FIRST_DELAY = (10.0, 22.0)   # seconds before the first one of a run
+UFO_RESPAWN = 25.0               # seconds between appearances
+UFO_POINTS = (50, 100, 150, 300)
+UFO_COLOR = (214, 228, 255)
+UFO_LIGHT = (255, 150, 80)
+
 # NASA story card on the game-over screen.
 NEWS_URL = "https://www.nasa.gov/news/recently-published/"
 NEWS_TIMEOUT = 8.0

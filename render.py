@@ -24,8 +24,13 @@ from config import (
     POPUP_RISE,
     RIGHT_WALL,
     ROW_COLORS,
+    SHIELD_TOP_COLOR,
     SHAKE_DECAY,
     SHAKE_MAX,
+    UFO_COLOR,
+    UFO_H,
+    UFO_LIGHT,
+    UFO_W,
     UI_COLOR,
     UI_DIM,
     WIDTH,
@@ -160,6 +165,7 @@ class RenderMixin:
         self.draw_walls(surface)
         if self.state not in ("title", "scores"):
             self.draw_aliens(surface)
+            self.draw_ufo(surface)
             self.draw_shields(surface)
             self.draw_drifters(surface)
             self.draw_bullets(surface)
@@ -264,6 +270,28 @@ class RenderMixin:
                                 ((x + w - 7, y + h - 8),
                                  (x + w - 3 - step, y + h),
                                  (x + w - 13, y + h - 8)))
+
+    def draw_ufo(self, surface: pygame.Surface) -> None:
+        ufo = self.ufo
+        if ufo is None:
+            return
+        x = int(ufo.x)
+        tick = pygame.time.get_ticks()
+        y = int(ufo.y) + int(math.sin(tick / 240.0) * 1.5)
+        w, h = UFO_W, UFO_H
+        cx = x + w // 2
+
+        pygame.draw.ellipse(surface, UFO_COLOR, (x, y + 5, w, h - 5))
+        pygame.draw.ellipse(surface, (110, 130, 170), (x, y + 5, w, h - 5), 1)
+        pygame.draw.ellipse(surface, (150, 194, 236), (cx - 10, y, 20, 11))
+        pygame.draw.ellipse(surface, (78, 118, 168), (cx - 10, y, 20, 11), 1)
+
+        # Running lights blinking in sequence.
+        for i in range(4):
+            lx = x + 7 + i * (w - 14) // 3
+            lit = (tick // 130 + i) % 3 != 0
+            pygame.draw.circle(surface, UFO_LIGHT if lit else (96, 70, 52),
+                               (lx, y + h - 4), 2)
 
     def draw_shields(self, surface: pygame.Surface) -> None:
         for s in self.shields:

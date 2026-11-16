@@ -14,7 +14,7 @@ main.py        bootstrap, CLI, input, and the event loop
 config.py      constants, colours, and file paths
 deps.py        optional music/covers/numpy imports
 assets.py      fonts, avatar tiles, cover delegation, tone blips
-entities.py    bullets, aliens, player, bunkers, avatar hazards
+entities.py    bullets, aliens, player, bunkers, avatar hazards, mystery UFO
 leaderboard.py persistent top-100 table
 audio.py       MusicPlayer worker thread and mixer channels
 render.py      RenderMixin: playfield, HUD, leaderboard, overlays
@@ -220,6 +220,19 @@ elsewhere with:
 SPACE_INVADERS_AVATARS=/path/to/sheet.jpeg python main.py
 ```
 
+## The mystery UFO
+
+Every 25 seconds or so a saucer crosses the top of the arena without warning,
+travelling 70–105 px/s from one edge to the other. It is worth **50, 100, 150
+or 300 points**, picked when it appears, and it exists only to be shot: it
+never fires, never touches the bunkers, and alien fire passes straight
+through it.
+
+Because it flies above the formation, you can only reach it through a column
+you have already cleared, which is exactly the classic tension. A hit pays the
+points, floats the number up and bursts the saucer in silver and orange; a
+miss costs nothing and the next one is scheduled about 25 seconds later.
+
 ## 1960s cover art backdrops
 
 Every wave paints a new 800×600 backdrop in the style of a 1960s
@@ -299,6 +312,8 @@ size, and `off` or 0% intensity skips it entirely.
 - **Floating avatar hazards** (see below), drifting and ricocheting off walls,
   aliens and bunkers, chipping away at bunkers while only your gun or your
   ship can destroy them
+- **A mystery UFO** (see below) crossing the top of the arena every ~25 s,
+  worth 50–300 points and hittable only through a cleared column
 - 3 lives, brief invulnerability (the ship flashes) after a hit
 - Endless waves: each cleared wave pays a bonus and starts faster
 - Game over when you run out of lives **or** the formation reaches the landing line
@@ -342,7 +357,7 @@ Each entry stores:
 | `WAVE` | Wave reached |
 | `AVATARS` | Floating avatar badges destroyed |
 | `BUNKER` | **Percentage of all bunker cells deployed during the run that were destroyed by your own bullets** |
-| `ACCURACY` | **Bullets that hit an alien or avatar ÷ bullets fired**, as a percentage |
+| `ACCURACY` | **Bullets that hit an alien, avatar or UFO ÷ bullets fired**, as a percentage |
 
 Accuracy counts only player bullets; hitting a bunker is a miss for this
 statistic. Bunker damage from alien fire, avatar bites and aliens marching
@@ -392,6 +407,7 @@ Plays the game with pseudo-random input for N seconds under SDL's dummy video
 driver, asserting that bullets and aliens stay in bounds, that no frame raises,
 and checking bunker erosion, letterboxed scaling at several resolutions, the
 avatar hazards (bouncing, every collision type, explosion effects, spawning),
+the mystery UFO (spawn timing, crossing, payout and bullet-only kills),
 that each wave paints a different backdrop and rotates through every music
 genre without repeats, that the leaderboard keeps 100 sorted entries, reloads
 correctly and records each run once, that shooting statistics follow the
@@ -411,6 +427,9 @@ The hazards are tuned by `DRIFTER_SIZE`, `DRIFTER_SPEED_MIN`/`MAX`,
 `DRIFTER_SPAWN_DELAY`, `DRIFTER_RESPAWN`, `DRIFTER_LIFE`,
 `DRIFTER_POINTS`/`DRIFTER_POINTS_MIN`, and `AVATAR_SHEET`. The concurrent
 limit is the wave number (set in `Game.update_drifters`).
+
+The saucer is tuned by `UFO_SPEED_MIN`/`MAX`, `UFO_FIRST_DELAY`, `UFO_RESPAWN`
+and `UFO_POINTS` in `config.py`.
 
 The leaderboard size is `LEADERBOARD_SIZE` (100) and its path is
 `SCORES_FILE` at the top of `main.py`.

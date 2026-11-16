@@ -50,11 +50,21 @@ from config import (
     SHIELD_W,
     SHIELD_Y,
     SHIELDS,
+    UFO_COLOR,
+    UFO_FIRST_DELAY,
+    UFO_H,
+    UFO_LIGHT,
+    UFO_POINTS,
+    UFO_RESPAWN,
+    UFO_SPEED_MAX,
+    UFO_SPEED_MIN,
+    UFO_W,
+    UFO_Y,
     WIDTH,
     clamp,
 )
 from deps import metal
-from entities import Alien, Bullet, Drifter, Player, Shield
+from entities import Alien, Bullet, Drifter, Player, Shield, Ufo
 from leaderboard import Leaderboard
 from render import RenderMixin
 
@@ -128,6 +138,9 @@ class Game(RenderMixin):
         self.shake_energy = 0.0
         self.shake_phase = 0.0
         self.popups: list[list] = []
+        # The mystery saucer, if one is crossing, and the countdown to the next.
+        self.ufo: Ufo | None = None
+        self.ufo_timer = self.rng.uniform(*UFO_FIRST_DELAY)
         # NASA story card for the game-over screen (set by main).
         self.story = None
         # Snapshot the board's best so this run can celebrate beating it once.
@@ -212,6 +225,7 @@ class Game(RenderMixin):
         self.update_aliens(dt)
         self.update_alien_fire(dt)
         self.update_drifters(dt)
+        self.update_ufo(dt)
         self.check_collisions()
 
         if not self.alive_aliens():
@@ -354,6 +368,45 @@ class Game(RenderMixin):
         vx = speed * math.cos(angle) * self.rng.choice((-1, 1))
         vy = speed * math.sin(angle) * self.rng.choice((-1, 1))
         self.drifters.append(Drifter(image, palette, x, y, vx, vy))
+
+    def update_ufo(self, dt: float) -> None:
+        """Count down to the next saucer, or fly the current one across."""
+        ufo = self.ufo
+        if ufo is None:
+            self.ufo_timer -= dt
+            if self.ufo_timer <= 0:
+                self.spawn_ufo()
+            return
+        ufo.x += ufo.vx * dt
+        if ufo.x + UFO_W < -8 or ufo.x > WIDTH + 8:
+            # It got away: another one is due about UFO_RESPAWN from now.
+            self.ufo = None
+            self.ufo_timer = UFO_RESPAWN + self.rng.uniform(-3.0, 3.0)
+
+    def spawn_ufo(self) -> None:
+        direction = self.rng.choice((-1, 1))
+        speed = self.rng.uniform(UFO_SPEED_MIN, UFO_SPEED_MAX)
+        self.ufo = Ufo(
+            x=-UFO_W if direction > 0 else WIDTH,
+            y=UFO_Y,
+            vx=speed * direction,
+            points=self.rng.choice(UFO_POINTS),
+        )
+
+    def hit_ufo(self) -> None:
+        """A player bullet brought the saucer down: pay the table and move on."""
+        ufo = self.ufo
+        if ufo is None:
+            return
+        self.ufo = None
+        self.ufo_timer = UFO_RESPAWN + self.rng.uniform(-3.0, 3.0)
+        self.shots_hit += 1
+        self.score += ufo.points
+        self.spawn_popup(ufo.x + UFO_W / 2, ufo.y, f"+{ufo.points}",
+                         UFO_LIGHT)
+        self.explode(ufo.x + UFO_W / 2, ufo.y + UFO_H / 2,
+                     [UFO_COLOR, UFO_LIGHT, (255, 255, 255)])
+        self.maybe_celebrate_record()
 
     def check_drifter_collisions(self, d: Drifter) -> None:
         """Damage is mutual, but only your bullets and your ship kill a badge.
@@ -523,11 +576,14 @@ class Game(RenderMixin):
                                  self.rng.choice(palette), 22.0])
 
     def check_collisions(self) -> None:
-        # Player bullets: bunkers first, then aliens (highest one wins).
+        # Player bullets: bunkers first, then the saucer, then aliens.
         surviving = []
         for b in self.player_bullets:
             path = b.sweep_rect()
             if self.damage_shield(path, b.vy, by_player=True):
+                continue
+            if self.ufo is not None and path.colliderect(self.ufo.rect()):
+                self.hit_ufo()
                 continue
             hit = None
             for a in sorted(self.alive_aliens(), key=lambda a: a.y):

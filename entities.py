@@ -1,4 +1,4 @@
-"""Player, aliens, bullets, bunkers, and floating avatar hazards."""
+"""Player, aliens, bullets, bunkers, floating avatar hazards, and the UFO."""
 
 from __future__ import annotations
 
@@ -21,6 +21,8 @@ from config import (
     SHIELD_COLS,
     SHIELD_ROWS,
     SHIELD_TOP_COLOR,
+    UFO_H,
+    UFO_W,
 )
 
 
@@ -113,6 +115,19 @@ class Drifter:
 
     def rect(self) -> pygame.Rect:
         return pygame.Rect(int(self.x), int(self.y), self.size, self.size)
+
+
+@dataclass
+class Ufo:
+    """The mystery saucer that crosses the top of the arena."""
+
+    x: float
+    y: float
+    vx: float
+    points: int
+
+    def rect(self) -> pygame.Rect:
+        return pygame.Rect(int(self.x), int(self.y), UFO_W, UFO_H)
 
 
 class Shield:

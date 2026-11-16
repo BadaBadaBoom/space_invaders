@@ -37,10 +37,15 @@ from config import (
     SHAKE_LIFE_LOST,
     SHAKE_MAX,
     SHAKE_RECORD,
+    UFO_FIRST_DELAY,
+    UFO_POINTS,
+    UFO_RESPAWN,
+    UFO_SPEED_MIN,
+    UFO_Y,
     WIDTH,
 )
 from deps import metal, np
-from entities import Bullet, Drifter, Shield
+from entities import Bullet, Drifter, Shield, Ufo
 from game import Game
 from leaderboard import Leaderboard, _score_order
 from render import alien_look
@@ -63,6 +68,7 @@ def selftest(seconds: float) -> int:
 
     check_shields(scores)
     check_drifters(scores)
+    check_ufo()
     check_feedback()
     check_leaderboard()
     check_clear_scores()
@@ -300,6 +306,51 @@ def check_drifters(leaderboard: Leaderboard | None = None) -> None:
             game.drifter_timer = 0.0  # try to force a spawn every frame
             peak = max(peak, len(game.drifters))
         assert peak == expected, f"wave {wave}: peak {peak}, expected {expected}"
+
+
+def check_ufo() -> None:
+    """The saucer appears on a timer, crosses, and pays from its table."""
+    game = Game(seed=31)
+    game.start()
+    assert game.ufo is None, "a fresh run starts with no saucer"
+    assert 0 < game.ufo_timer <= UFO_FIRST_DELAY[1]
+
+    game.ufo_timer = 0.01
+    game.update_ufo(0.02)
+    ufo = game.ufo
+    assert ufo is not None, "saucer never appeared"
+    assert ufo.y == UFO_Y
+    assert abs(ufo.vx) >= UFO_SPEED_MIN
+    assert ufo.points in UFO_POINTS
+    assert ufo.x < 0 or ufo.x >= WIDTH - 1, "saucer did not start off-screen"
+
+    # It leaves the far side and another is scheduled.
+    game.update_ufo(30.0)
+    assert game.ufo is None, "saucer never left the arena"
+    assert 0 < game.ufo_timer <= UFO_RESPAWN + 3.0
+
+    # A player bullet brings it down for its listed points.
+    game.ufo = Ufo(WIDTH / 2, UFO_Y, 80.0, 300)
+    game.score = 0
+    game.shots_hit = 0
+    game.popups = []
+    game.player_bullets = [Bullet(WIDTH / 2 + 10, UFO_Y + 6,
+                                  -PLAYER_BULLET_SPEED, True)]
+    debris_before = len(game.debris)
+    game.check_collisions()
+    assert game.ufo is None, "bullet did not down the saucer"
+    assert game.score == 300
+    assert game.shots_hit == 1
+    assert len(game.debris) > debris_before, "no explosion debris"
+    assert game.popups and game.popups[-1][2] == "+300"
+    assert 0 < game.ufo_timer <= UFO_RESPAWN + 3.0
+
+    # Alien fire passes it by: only your bullets count.
+    game.ufo = Ufo(WIDTH / 2, UFO_Y, 0.0, 50)
+    game.alien_bullets = [Bullet(WIDTH / 2 + 10, UFO_Y + 6,
+                                 ALIEN_BULLET_SPEED, False)]
+    game.check_collisions()
+    assert game.ufo is not None, "enemy fire downed the saucer"
 
 
 def check_feedback() -> None:
