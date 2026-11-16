@@ -131,8 +131,15 @@ def main() -> int:
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.VIDEORESIZE and not fullscreen:
+                # pygame 2 resizes the display surface itself when the
+                # window manager changes the window size. Calling set_mode()
+                # with the size the WM just forced on us can bounce another
+                # VIDEORESIZE straight back, which becomes a resize storm
+                # under a tiling compositor. Only reconfigure if the surface
+                # really lags behind the requested size.
                 size = (max(event.w, 320), max(event.h, 240))
-                screen = pygame.display.set_mode(size, pygame.RESIZABLE)
+                if size != screen.get_size():
+                    screen = pygame.display.set_mode(size, pygame.RESIZABLE)
             elif event.type == pygame.KEYDOWN:
                 if game.state == "scores":
                     if event.key in (pygame.K_ESCAPE, pygame.K_l,
