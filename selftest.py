@@ -329,6 +329,10 @@ def check_record_celebration() -> None:
 
         game = Game(seed=11, leaderboard=board)
         game.start()
+        assert game.story is None
+        game.story = object()
+        game.start()
+        assert game.story is None, "a new run must clear the previous story"
         assert game.record_to_beat == 500 and not game.record_beaten
         if metal is not None and pygame.mixer.get_init():
             assert "record" in game.sounds, "record boom was not pre-rendered"
