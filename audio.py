@@ -44,6 +44,10 @@ class MusicPlayer:
         else:
             self._start(genre)
 
+    def next_track(self) -> None:
+        """Skip to a freshly composed song, staying in the current genre."""
+        self.request(self.genre)
+
     def _start(self, genre: str | None = None) -> None:
         self.want_new = False
         if genre is None and metal is not None:
