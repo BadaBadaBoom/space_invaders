@@ -10,6 +10,7 @@ Controls
     keypad +                  next song
     L                         high-score leaderboard
     F3                        cycle the CRT filter (off / low / medium / high)
+    [ / ]                     CRT intensity down / up (10% steps)
     F11  /  Alt+Enter         fullscreen (the view scales to any size)
     Enter                     start / restart (composes a new song)
 
@@ -47,6 +48,7 @@ except ModuleNotFoundError:
 from audio import DEFAULT_VOLUME, VOLUME_STEP, MusicPlayer
 from config import (
     CRT_DEFAULT,
+    CRT_INTENSITY,
     FPS,
     HEIGHT,
     LEADERBOARD_ROWS,
@@ -62,6 +64,7 @@ from news import NewsFeed
 from selftest import selftest
 
 CRT_PRESETS = ("off", "low", "medium", "high")
+CRT_INTENSITY_STEP = 0.1
 
 
 def read_input() -> tuple[int, bool]:
@@ -107,7 +110,8 @@ def main() -> int:
     clock = pygame.time.Clock()
 
     game = Game()
-    crt = CrtOverlay((WIDTH, HEIGHT), preset=CRT_DEFAULT)
+    crt = CrtOverlay((WIDTH, HEIGHT), preset=CRT_DEFAULT,
+                     intensity=CRT_INTENSITY)
     news_feed = NewsFeed()
     music_player = MusicPlayer(enabled=not args.no_music,
                               volume=args.music_volume)
@@ -128,7 +132,6 @@ def main() -> int:
             screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
         else:
             screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
-        pygame.mouse.set_visible(not fullscreen)
 
     # The title screen gets a track while the game is being set up; every
     # new game and every new wave composes another one.  The first NASA
@@ -196,7 +199,15 @@ def main() -> int:
                 elif event.key == pygame.K_F3:
                     index = (CRT_PRESETS.index(crt.preset) + 1) % len(CRT_PRESETS)
                     crt.set_preset(CRT_PRESETS[index])
-                    crt_hint = (f"CRT {crt.preset.upper()}",
+                    level = round(crt.intensity * 100)
+                    crt_hint = (f"CRT {crt.preset.upper()} {level}%",
+                                pygame.time.get_ticks() + 1400)
+                elif event.key in (pygame.K_LEFTBRACKET, pygame.K_RIGHTBRACKET):
+                    step = (CRT_INTENSITY_STEP
+                            if event.key == pygame.K_RIGHTBRACKET
+                            else -CRT_INTENSITY_STEP)
+                    crt.set_intensity(crt.intensity + step)
+                    crt_hint = (f"CRT {round(crt.intensity * 100)}%",
                                 pygame.time.get_ticks() + 1400)
                 elif event.key == pygame.K_l:
                     game.show_scores()
@@ -249,6 +260,12 @@ def main() -> int:
             if story is not None:
                 news_feed.advance()
 
+        # Keep the pointer visible outside active play so fullscreen story
+        # links can be clicked; hide it only while the game is being played.
+        want_cursor = not fullscreen or game.state != "playing"
+        if pygame.mouse.get_visible() != want_cursor:
+            pygame.mouse.set_visible(want_cursor)
+
         game.draw(game.canvas)
         now = pygame.time.get_ticks()
         hint = None
@@ -264,7 +281,7 @@ def main() -> int:
         # The NASA story card stays crisp: keep a pre-CRT copy and put it back.
         panel = getattr(game, "story_panel_rect", None)
         clean_panel = None
-        if panel is not None and crt.preset != "off":
+        if panel is not None and crt.preset != "off" and crt.intensity > 0:
             clean_panel = game.canvas.subsurface(panel).copy()
         crt.apply_inplace(game.canvas, t=pygame.time.get_ticks() / 1000)
         if clean_panel is not None and panel is not None:
