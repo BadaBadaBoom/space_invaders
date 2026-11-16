@@ -274,6 +274,8 @@ grows together on a big display.
   different music genre per wave
 - **A persistent top-100 leaderboard** (see below) recording score, wave,
   avatars killed and your shooting statistics
+- **A NASA story on every game-over screen** (see below): picture, headline and
+  summary, fetched in the background while you play
 
 ## High-score leaderboard
 
@@ -313,6 +315,23 @@ follows you once you pass it. The moment a run beats the board's best, half the
 remaining aliens (rounded down, so the wave always keeps at least one) explode
 in their row colours and a 2.2-second synthesized blast plays. It happens once
 per run, and an empty board simply has no record to beat.
+
+## NASA story at game over
+
+Every finished run shows a NASA story on the game-over screen: its picture,
+headline and summary, under the run's score, wave, accuracy, bunker and avatar
+statistics.
+
+Stories come from [NASA's Recently Published
+page](https://www.nasa.gov/news/recently-published/). The first game over shows
+the first story on the page; each following run advances by one. When the last
+story on a page has been shown, the game follows the page's **Next** button to
+the next page and carries on from there.
+
+The next story and its picture are downloaded on a background thread while you
+play, so the game-over screen never waits for the network. If the page cannot
+be reached the card is simply omitted and the usual game-over screen is shown.
+No API key or extra dependency is needed.
 
 ## Headless smoke test
 

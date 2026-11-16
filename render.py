@@ -27,6 +27,57 @@ from config import (
     WIDTH,
 )
 
+_ELLIPSIS = "…"
+
+
+def wrap_text(font: pygame.font.Font, text: str, width: int,
+              max_lines: int) -> list[str]:
+    """Greedily wrap *text* into at most *max_lines* lines no wider than
+    *width*, measuring with ``font.size``.
+
+    Words longer than the box are split by character so nothing clips.  If
+    the content needs more than *max_lines* lines the result is truncated and
+    the final line is trimmed and suffixed with an ellipsis.
+    """
+    words = str(text).split()
+    lines: list[str] = []
+    line = ""
+
+    def fits(value: str) -> bool:
+        return font.size(value)[0] <= width
+
+    for word in words:
+        candidate = f"{line} {word}" if line else word
+        if fits(candidate):
+            line = candidate
+            continue
+        if line:
+            lines.append(line)
+            line = ""
+        if fits(word):
+            line = word
+            continue
+        # A single word wider than the box: hard-wrap it by character.
+        chunk = ""
+        for char in word:
+            if chunk and not fits(chunk + char):
+                lines.append(chunk)
+                chunk = ""
+            chunk += char
+        line = chunk
+    if line:
+        lines.append(line)
+
+    if len(lines) <= max_lines:
+        return lines
+
+    kept = lines[:max_lines]
+    last = kept[-1]
+    while last and not fits(last + _ELLIPSIS):
+        last = last[:-1]
+    kept[-1] = last.rstrip() + _ELLIPSIS
+    return kept
+
 
 class RenderMixin:
     def draw(self, surface: pygame.Surface) -> None:
@@ -265,6 +316,10 @@ class RenderMixin:
             surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 250))
             surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 320))
         elif self.state == "gameover":
+            story = getattr(self, "story", None)
+            if story is not None:
+                self.draw_gameover_story(surface, story)
+                return
             stats = self.run_stats()
             title = self.font_big.render("GAME OVER", True, (255, 110, 130))
             score = self.font_mid.render(
@@ -291,3 +346,63 @@ class RenderMixin:
             surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 374))
             surface.blit(scores_hint,
                          (WIDTH // 2 - scores_hint.get_width() // 2, 404))
+
+    def draw_gameover_story(self, surface: pygame.Surface, story) -> None:
+        """Game-over screen with the NASA story card alongside all stats."""
+        stats = self.run_stats()
+
+        title = self.font_big.render("GAME OVER", True, (255, 110, 130))
+        surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 68))
+
+        score = self.font_mid.render(
+            f"Score {self.score}   Wave {self.wave}", True, UI_COLOR)
+        surface.blit(score, (WIDTH // 2 - score.get_width() // 2, 128))
+
+        line = self.font_small.render(
+            f"AVATARS KILLED {stats['avatars']}    "
+            f"BUNKERS SHOT {stats['bunker']:.1f}%    "
+            f"ACCURACY {stats['accuracy']:.1f}%", True, UI_COLOR)
+        surface.blit(line, (WIDTH // 2 - line.get_width() // 2, 160))
+
+        if self.last_rank is not None:
+            rank = self.font_mid.render(
+                f"NEW HIGH SCORE  #{self.last_rank}", True, (255, 225, 120))
+            surface.blit(rank, (WIDTH // 2 - rank.get_width() // 2, 186))
+        else:
+            rank = self.font_small.render(
+                "DID NOT MAKE THE TOP 100", True, UI_DIM)
+            surface.blit(rank, (WIDTH // 2 - rank.get_width() // 2, 190))
+
+        panel = pygame.Rect(34, 222, 732, 288)
+        pygame.draw.rect(surface, (14, 18, 38), panel, border_radius=10)
+        pygame.draw.rect(surface, (46, 54, 92), panel, width=1, border_radius=10)
+
+        box = pygame.Rect(48, 234, 320, 180)
+        image = getattr(story, "image", None)
+        if image is not None:
+            surface.blit(image, box.topleft)
+        else:
+            pygame.draw.rect(surface, (24, 28, 52), box)
+            nasa = self.font_mid.render("NASA", True, UI_DIM)
+            surface.blit(nasa, (box.centerx - nasa.get_width() // 2,
+                                box.centery - nasa.get_height() // 2))
+        pygame.draw.rect(surface, (60, 70, 110), box, width=1)
+
+        heading_lines = wrap_text(self.font_small, story.title, 368, 3)
+        for i, text in enumerate(heading_lines):
+            label = self.font_small.render(text, True, (255, 225, 140))
+            surface.blit(label, (384, 234 + i * 22))
+
+        summary_y = 234 + len(heading_lines) * 22 + 16
+        for i, text in enumerate(wrap_text(
+                self.font_tiny, story.summary, 368, 10)):
+            label = self.font_tiny.render(text, True, UI_COLOR)
+            surface.blit(label, (384, summary_y + i * 17))
+
+        hint = self.font_small.render(
+            "press ENTER to play again", True, (255, 220, 120))
+        surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 522))
+        scores_hint = self.font_small.render(
+            "press L for high scores", True, UI_DIM)
+        surface.blit(scores_hint,
+                     (WIDTH // 2 - scores_hint.get_width() // 2, 546))
