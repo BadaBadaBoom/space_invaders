@@ -73,6 +73,17 @@ def read_input() -> tuple[int, bool]:
     return move, keys[pygame.K_SPACE]
 
 
+def skip_song(player: MusicPlayer, game: Game) -> None:
+    """Skip to a new genre and keep the wave's planned genre in sync."""
+    player.next_track()
+    if player.genre is None:
+        return
+    game.music_genre = player.genre
+    if game.next_music_genre == game.music_genre:
+        game.next_music_genre = game.choose_music_genre()
+    player.prepare(game.next_music_genre)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Space Invaders")
     parser.add_argument("--selftest", action="store_true",
@@ -229,7 +240,7 @@ def main() -> int:
                     volume_hint = (f"MUSIC {round(level * 100)}%",
                                    pygame.time.get_ticks() + 1400)
                 elif event.key == pygame.K_KP_PLUS:
-                    music_player.next_track()
+                    skip_song(music_player, game)
                     volume_hint = ("NEXT SONG",
                                    pygame.time.get_ticks() + 1400)
                 elif event.key == pygame.K_m:
