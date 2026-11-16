@@ -180,16 +180,20 @@ explosion.
 
 Shortly after each wave begins, a badge starts floating across the arena; it
 moves in a straight line at 70–125 px/s and **bounces off the four walls,
-the alien formation and the bunkers**, never stopping. Every 4.5 s after one
-dies, another appears. The limit is the wave number: **one badge on wave 1,
-two on wave 2, three on wave 3**, and so on. Spawns are placed in open space,
-below the formation and above the bunkers.
+the alien formation and the bunkers**. Each badge lives for **10 seconds**: it
+starts at full brightness, fades steadily, and at the end of its life vanishes
+in a small palette-coloured pop — no points, and it does not count as a kill.
+Every 4.5 s after one disappears, another appears. The limit is the wave
+number: **one badge on wave 1, two on wave 2, three on wave 3**, and so on.
+Spawns are placed in open space, below the formation and above the bunkers.
 
-Only two things can destroy a badge — your bullet, or your ship:
+Only two things can destroy a badge — your bullet, or your ship. A bullet kill
+pays **100 points at spawn, falling to 10 just before the badge fades out**,
+so shoot early:
 
 | Collides with | Badge | Other party |
 | --- | --- | --- |
-| Your bullet | Explodes, **+50 points** | Bullet is consumed |
+| Your bullet | Explodes, **+10 to +100 points** (more the sooner you shoot) | Bullet is consumed |
 | Player ship | Explodes | You lose a life |
 | Bunker | Ricochets off | A round bite is erased |
 | Alien | Ricochets off | Unharmed |
@@ -329,9 +333,11 @@ story on a page has been shown, the game follows the page's **Next** button to
 the next page and carries on from there.
 
 The next story and its picture are downloaded on a background thread while you
-play, so the game-over screen never waits for the network. If the page cannot
-be reached the card is simply omitted and the usual game-over screen is shown.
-No API key or extra dependency is needed.
+play, so the game-over screen never waits for the network. The card credits the
+source (`NASA · type · read time`) and shows the article's URL; click the link
+to open the full story in your browser. If the page cannot be reached the card
+is simply omitted and the usual game-over screen is shown. No API key or extra
+dependency is needed.
 
 ## Headless smoke test
 
@@ -356,9 +362,9 @@ size/spacing, marching speed, bullet speeds, fire cooldown, colors, lives,
 number of bunkers, and bunker grid/cell size (`SHIELD_*`).
 
 The hazards are tuned by `DRIFTER_SIZE`, `DRIFTER_SPEED_MIN`/`MAX`,
-`DRIFTER_SPAWN_DELAY`, `DRIFTER_RESPAWN`, `DRIFTER_POINTS`, and
-`AVATAR_SHEET`. The concurrent limit is the wave number (set in
-`Game.update_drifters`).
+`DRIFTER_SPAWN_DELAY`, `DRIFTER_RESPAWN`, `DRIFTER_LIFE`,
+`DRIFTER_POINTS`/`DRIFTER_POINTS_MIN`, and `AVATAR_SHEET`. The concurrent
+limit is the wave number (set in `Game.update_drifters`).
 
 The leaderboard size is `LEADERBOARD_SIZE` (100) and its path is
 `SCORES_FILE` at the top of `main.py`.
