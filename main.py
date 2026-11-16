@@ -216,6 +216,7 @@ def main() -> int:
                     story_assigned = False
                     news_feed.begin_round()
                     music_player.request(game.music_genre)
+                    music_player.prepare(game.next_music_genre)
                     last_wave = game.wave
                 elif event.key == pygame.K_p:
                     game.toggle_pause()
@@ -250,6 +251,7 @@ def main() -> int:
             if game.wave != last_wave:
                 last_wave = game.wave
                 music_player.request(game.music_genre)
+                music_player.prepare(game.next_music_genre)
 
         # The story was fetched during the run; pin it to this game over and
         # start looking for the next one during the following game.

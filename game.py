@@ -124,6 +124,7 @@ class Game(RenderMixin):
         self.record_beaten = False
         self.genre_bag = []
         self.music_genre = None
+        self.next_music_genre = None
         self.spawn_wave()
 
     def spawn_wave(self) -> None:
@@ -149,8 +150,10 @@ class Game(RenderMixin):
         self.fire_timer = max(0.45, 1.3 - 0.1 * (self.wave - 1))
         self.alien_anim = 0.0
 
-        # New wave, new cover painting and a fresh genre of music.
-        self.music_genre = self.choose_music_genre()
+        # New wave, new cover painting and a fresh genre of music. Keep one
+        # genre composed ahead so the next track can be prepared in advance.
+        self.music_genre = self.next_music_genre or self.choose_music_genre()
+        self.next_music_genre = self.choose_music_genre()
         self.pulp_bg = make_pulp_background(
             random.Random(self.rng.getrandbits(48)))
 

@@ -719,10 +719,14 @@ def check_backgrounds(leaderboard: Leaderboard | None = None) -> None:
     game = Game(seed=77, leaderboard=leaderboard)
     before_art = pygame.image.tobytes(game.pulp_bg, "RGB")
     before_genre = game.music_genre
+    upcoming = game.next_music_genre
     game.next_wave()
     assert pygame.image.tobytes(game.pulp_bg, "RGB") != before_art, (
         "backdrop did not change with the wave")
     if metal is not None:
+        assert upcoming is not None
+        assert game.music_genre == upcoming, (
+            "next_wave did not use the pre-picked genre")
         assert game.music_genre != before_genre, "wave reused the same genre"
 
     # The bag must use every genre before any of them comes back around.
