@@ -28,6 +28,12 @@ from config import (
     LEADERBOARD_SIZE,
     LEFT_WALL,
     PLAYER_BULLET_SPEED,
+    PLAYER_FIRE_COOLDOWN,
+    PLAYER_W,
+    POWERUP_RAPID_SCALE,
+    POWERUP_RAPID_TIME,
+    POWERUP_SIZE,
+    POWERUP_TRIPLE_TIME,
     RIGHT_WALL,
     ROW_POINTS,
     SHIELD_COLS,
@@ -45,7 +51,7 @@ from config import (
     WIDTH,
 )
 from deps import metal, np
-from entities import Bullet, Drifter, Shield, Ufo
+from entities import Bullet, Drifter, PowerUp, Shield, Ufo
 from game import Game
 from leaderboard import Leaderboard, _score_order
 from render import alien_look
@@ -69,6 +75,7 @@ def selftest(seconds: float) -> int:
     check_shields(scores)
     check_drifters(scores)
     check_ufo()
+    check_powerups()
     check_feedback()
     check_leaderboard()
     check_clear_scores()
@@ -351,6 +358,75 @@ def check_ufo() -> None:
                                  ALIEN_BULLET_SPEED, False)]
     game.check_collisions()
     assert game.ufo is not None, "enemy fire downed the saucer"
+
+
+def check_powerups() -> None:
+    """Capsules drop occasionally, fall, and hand over their boost on catch."""
+    game = Game(seed=41)
+    game.start()
+    assert game.powerups == []
+
+    # Drops are occasional: some kills leave one, most do not, and repair
+    # never drops while every bunker is whole.
+    game.rng.seed(7)
+    drops = 0
+    for _ in range(600):
+        before = len(game.powerups)
+        game.maybe_drop_powerup(WIDTH / 2, 200)
+        drops += len(game.powerups) - before
+    assert 0 < drops < 600, f"{drops} drops in 600 kills"
+    assert all(p.kind != "repair" for p in game.powerups), (
+        "repair capsule dropped with the bunkers intact")
+
+    # Catching a capsule applies it; missing one drops off the floor.
+    game.powerups = []
+    game.player.x = WIDTH / 2 - PLAYER_W / 2
+    game.player.rapid = 0.0
+    game.spawn_powerup("rapid", game.player.center_x, game.player.y)
+    game.update_powerups(1 / 60)
+    assert game.powerups == [], "capsule was not collected"
+    assert game.player.rapid == POWERUP_RAPID_TIME
+
+    game.powerups = [PowerUp("triple", 400, FLOOR_Y - POWERUP_SIZE - 1)]
+    game.update_powerups(0.5)
+    assert game.powerups == [], "capsule outlived the floor"
+
+    # Rapid fire shortens the cooldown.
+    game.player.rapid = 5.0
+    game.player.triple = 0.0
+    game.player.cooldown = 0.0
+    game.player_bullets.clear()
+    game.update_player(0, 0, True)
+    assert game.player.cooldown == PLAYER_FIRE_COOLDOWN * POWERUP_RAPID_SCALE
+
+    # Triple shot fires three parallel bullets and counts every one as a shot.
+    game.player.rapid = 0.0
+    game.player.triple = 5.0
+    game.player.cooldown = 0.0
+    game.player_bullets.clear()
+    game.shots_fired = 0
+    game.update_player(0, 0, True)
+    xs = sorted(bullet.x for bullet in game.player_bullets)
+    assert len(xs) == 3, f"triple shot fired {len(xs)} bullets"
+    assert xs[1] - xs[0] == 10 and xs[2] - xs[1] == 10
+    assert game.shots_fired == 3
+
+    # Timers run down on their own.
+    game.update_player(1.0, 0, False)
+    assert 3.9 < game.player.triple < 4.1
+
+    # Repair rebuilds a wrecked bunker and counts the cells as deployed.
+    game.shields = game.make_shields()
+    game.bunker_cells_total = sum(s.alive_cells() for s in game.shields)
+    bunker = game.shields[0]
+    for row in range(2, 8):
+        for col in range(4, 12):
+            bunker.damage(row, col, radius=0.0)
+    assert bunker.alive_cells() < bunker.intact, "test bunker survived damage"
+    deployed = game.bunker_cells_total
+    game.apply_powerup(PowerUp("repair", 100, 100))
+    assert bunker.alive_cells() == bunker.intact, "bunker was not repaired"
+    assert game.bunker_cells_total > deployed
 
 
 def check_feedback() -> None:

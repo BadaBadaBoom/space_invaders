@@ -16,6 +16,8 @@ from config import (
     PLAYER_H,
     PLAYER_W,
     PLAYER_Y,
+    POWERUP_FALL_SPEED,
+    POWERUP_SIZE,
     SHIELD_BOTTOM_COLOR,
     SHIELD_CELL,
     SHIELD_COLS,
@@ -77,6 +79,8 @@ class Player:
     y: float = PLAYER_Y
     cooldown: float = 0.0
     invulnerable: float = 0.0
+    rapid: float = 0.0       # seconds of rapid fire left
+    triple: float = 0.0      # seconds of triple shot left
 
     def rect(self) -> pygame.Rect:
         return pygame.Rect(int(self.x), int(self.y), PLAYER_W, PLAYER_H)
@@ -130,6 +134,20 @@ class Ufo:
         return pygame.Rect(int(self.x), int(self.y), UFO_W, UFO_H)
 
 
+@dataclass
+class PowerUp:
+    """A capsule dropped by a dead alien; catch it with the ship."""
+
+    kind: str
+    x: float
+    y: float
+    vy: float = POWERUP_FALL_SPEED
+
+    def rect(self) -> pygame.Rect:
+        return pygame.Rect(int(self.x), int(self.y),
+                           POWERUP_SIZE, POWERUP_SIZE)
+
+
 class Shield:
     """A bunker: a grid of small cells that bullets chip away at."""
 
@@ -141,6 +159,7 @@ class Shield:
         self.cells = [bytearray(b"\x01" * self.cols) for _ in range(self.rows)]
         self._surf: pygame.Surface | None = None
         self.carve_shape()
+        self.intact = self.alive_cells()   # cells in a pristine bunker
 
     def carve_shape(self) -> None:
         """Rounded top corners and the classic arch cut out of the bottom."""
@@ -225,6 +244,13 @@ class Shield:
 
     def alive_cells(self) -> int:
         return sum(sum(row) for row in self.cells)
+
+    def repair(self) -> int:
+        """Rebuild the bunker; return how many cells were restored."""
+        before = self.alive_cells()
+        self.cells = [bytearray(b"\x01" * self.cols) for _ in range(self.rows)]
+        self.carve_shape()
+        return self.alive_cells() - before
 
     # -- rendering --------------------------------------------------------- #
 

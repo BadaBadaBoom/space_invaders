@@ -90,6 +90,22 @@ UFO_POINTS = (50, 100, 150, 300)
 UFO_COLOR = (214, 228, 255)
 UFO_LIGHT = (255, 150, 80)
 
+# Power-up capsules dropped by destroyed aliens and caught with the ship.
+POWERUP_DROP_CHANCE = 0.07
+POWERUP_FALL_SPEED = 95.0
+POWERUP_SIZE = 18
+POWERUP_RAPID_SCALE = 0.4     # fire cooldown multiplier while rapid is on
+POWERUP_RAPID_TIME = 8.0
+POWERUP_TRIPLE_TIME = 10.0
+POWERUP_KINDS = ("rapid", "triple", "repair")
+POWERUP_WEIGHTS = (40, 35, 25)
+POWERUP_COLORS = {
+    "rapid": (255, 205, 90),
+    "triple": (120, 220, 255),
+    "repair": (150, 255, 195),
+}
+POWERUP_LABELS = {"rapid": "R", "triple": "T", "repair": "B"}
+
 # NASA story card on the game-over screen.
 NEWS_URL = "https://www.nasa.gov/news/recently-published/"
 NEWS_TIMEOUT = 8.0

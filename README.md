@@ -14,7 +14,7 @@ main.py        bootstrap, CLI, input, and the event loop
 config.py      constants, colours, and file paths
 deps.py        optional music/covers/numpy imports
 assets.py      fonts, avatar tiles, cover delegation, tone blips
-entities.py    bullets, aliens, player, bunkers, avatar hazards, mystery UFO
+entities.py    bullets, aliens, player, bunkers, avatar hazards, UFO, capsules
 leaderboard.py persistent top-100 table
 audio.py       MusicPlayer worker thread and mixer channels
 render.py      RenderMixin: playfield, HUD, leaderboard, overlays
@@ -233,6 +233,22 @@ you have already cleared, which is exactly the classic tension. A hit pays the
 points, floats the number up and bursts the saucer in silver and orange; a
 miss costs nothing and the next one is scheduled about 25 seconds later.
 
+## Power-ups
+
+Roughly one alien kill in fourteen leaves a capsule falling at 95 px/s; catch
+it with the ship before it reaches the floor, where it vanishes.
+
+| Capsule | Effect |
+| --- | --- |
+| `R` (gold) | **Rapid fire** — fire cooldown ×0.4 for 8 seconds |
+| `T` (blue) | **Triple shot** — three parallel bullets per press for 10 seconds |
+| `B` (green) | **Repair** — every bunker rebuilt to its original shape |
+
+Both timed boosts can run at once, and picking one up again resets its timer.
+The HUD shows the remaining seconds under the lives. A repair capsule only
+drops when a bunker is actually damaged, and the rebuilt cells count as
+deployed, so the run's bunker percentage stays meaningful.
+
 ## 1960s cover art backdrops
 
 Every wave paints a new 800×600 backdrop in the style of a 1960s
@@ -314,6 +330,8 @@ size, and `off` or 0% intensity skips it entirely.
   ship can destroy them
 - **A mystery UFO** (see below) crossing the top of the arena every ~25 s,
   worth 50–300 points and hittable only through a cleared column
+- **Power-up capsules**: some alien kills drop a falling capsule for rapid
+  fire, triple shot or a bunker repair
 - 3 lives, brief invulnerability (the ship flashes) after a hit
 - Endless waves: each cleared wave pays a bonus and starts faster
 - Game over when you run out of lives **or** the formation reaches the landing line
@@ -408,6 +426,7 @@ driver, asserting that bullets and aliens stay in bounds, that no frame raises,
 and checking bunker erosion, letterboxed scaling at several resolutions, the
 avatar hazards (bouncing, every collision type, explosion effects, spawning),
 the mystery UFO (spawn timing, crossing, payout and bullet-only kills),
+power-up capsules (drop rate, falling, pickup, both timed boosts and repair),
 that each wave paints a different backdrop and rotates through every music
 genre without repeats, that the leaderboard keeps 100 sorted entries, reloads
 correctly and records each run once, that shooting statistics follow the
@@ -430,6 +449,10 @@ limit is the wave number (set in `Game.update_drifters`).
 
 The saucer is tuned by `UFO_SPEED_MIN`/`MAX`, `UFO_FIRST_DELAY`, `UFO_RESPAWN`
 and `UFO_POINTS` in `config.py`.
+
+Power-up capsules use `POWERUP_DROP_CHANCE`, `POWERUP_FALL_SPEED`,
+`POWERUP_RAPID_SCALE`/`TIME`, `POWERUP_TRIPLE_TIME`, and the
+`POWERUP_KINDS`/`WEIGHTS`/`COLORS`/`LABELS` tables.
 
 The leaderboard size is `LEADERBOARD_SIZE` (100) and its path is
 `SCORES_FILE` at the top of `main.py`.

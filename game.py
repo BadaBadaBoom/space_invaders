@@ -40,6 +40,14 @@ from config import (
     PLAYER_SPEED,
     PLAYER_W,
     POPUP_LIFE,
+    POWERUP_COLORS,
+    POWERUP_DROP_CHANCE,
+    POWERUP_KINDS,
+    POWERUP_RAPID_SCALE,
+    POWERUP_RAPID_TIME,
+    POWERUP_SIZE,
+    POWERUP_TRIPLE_TIME,
+    POWERUP_WEIGHTS,
     RIGHT_WALL,
     ROW_COLORS,
     ROW_POINTS,
@@ -64,7 +72,7 @@ from config import (
     clamp,
 )
 from deps import metal
-from entities import Alien, Bullet, Drifter, Player, Shield, Ufo
+from entities import Alien, Bullet, Drifter, Player, PowerUp, Shield, Ufo
 from leaderboard import Leaderboard
 from render import RenderMixin
 
@@ -84,6 +92,7 @@ class Game(RenderMixin):
             "wave": make_tone(660, 140, 0.14),
             "clank": make_tone(330, 45, 0.10),
             "blast": make_tone(82, 320, 0.22),
+            "power": make_tone(1046, 120, 0.14),
         }
         # Pre-render the beat-the-record boom once per Game instance, never
         # on the victory frame. Without numpy (metal is None), without the
@@ -141,6 +150,8 @@ class Game(RenderMixin):
         # The mystery saucer, if one is crossing, and the countdown to the next.
         self.ufo: Ufo | None = None
         self.ufo_timer = self.rng.uniform(*UFO_FIRST_DELAY)
+        # Capsules falling toward the ship.
+        self.powerups: list[PowerUp] = []
         # NASA story card for the game-over screen (set by main).
         self.story = None
         # Snapshot the board's best so this run can celebrate beating it once.
@@ -169,6 +180,7 @@ class Game(RenderMixin):
         self.flashes: list[list[float]] = []
         self.drifters: list[Drifter] = []
         self.drifter_timer = DRIFTER_SPAWN_DELAY
+        self.powerups = []
         self.shields = self.make_shields()
         self.bunker_cells_total += sum(s.alive_cells() for s in self.shields)
         self.fire_timer = max(0.45, 1.3 - 0.1 * (self.wave - 1))
@@ -226,6 +238,7 @@ class Game(RenderMixin):
         self.update_alien_fire(dt)
         self.update_drifters(dt)
         self.update_ufo(dt)
+        self.update_powerups(dt)
         self.check_collisions()
 
         if not self.alive_aliens():
@@ -242,18 +255,24 @@ class Game(RenderMixin):
         p = self.player
         p.invulnerable = max(0.0, p.invulnerable - dt)
         p.cooldown = max(0.0, p.cooldown - dt)
+        p.rapid = max(0.0, p.rapid - dt)
+        p.triple = max(0.0, p.triple - dt)
 
         if move:
             p.x = clamp(p.x + move * PLAYER_SPEED * dt, LEFT_WALL,
                         RIGHT_WALL - PLAYER_W)
 
-        if fire and p.cooldown <= 0 and len(self.player_bullets) < MAX_PLAYER_BULLETS:
-            p.cooldown = PLAYER_FIRE_COOLDOWN
-            self.player_bullets.append(Bullet(
-                x=p.center_x - 2, y=p.y - 14,
-                vy=-PLAYER_BULLET_SPEED, from_player=True,
-            ))
-            self.shots_fired += 1
+        limit = MAX_PLAYER_BULLETS * (3 if p.triple > 0 else 1)
+        if fire and p.cooldown <= 0 and len(self.player_bullets) < limit:
+            p.cooldown = PLAYER_FIRE_COOLDOWN * (
+                POWERUP_RAPID_SCALE if p.rapid > 0 else 1.0)
+            spread = (-10, 0, 10) if p.triple > 0 else (0,)
+            for offset in spread:
+                self.player_bullets.append(Bullet(
+                    x=p.center_x + offset - 2, y=p.y - 14,
+                    vy=-PLAYER_BULLET_SPEED, from_player=True,
+                ))
+            self.shots_fired += len(spread)
             self.play("shoot")
 
     def update_bullets(self, dt: float) -> None:
@@ -407,6 +426,61 @@ class Game(RenderMixin):
         self.explode(ufo.x + UFO_W / 2, ufo.y + UFO_H / 2,
                      [UFO_COLOR, UFO_LIGHT, (255, 255, 255)])
         self.maybe_celebrate_record()
+
+    def maybe_drop_powerup(self, x: float, y: float) -> None:
+        """A small share of alien kills leaves a capsule behind."""
+        if self.rng.random() >= POWERUP_DROP_CHANCE:
+            return
+        kinds = list(POWERUP_KINDS)
+        weights = list(POWERUP_WEIGHTS)
+        if all(shield.alive_cells() >= shield.intact for shield in self.shields):
+            # Nothing to patch up, so only the timed boosts can drop.
+            weights = [weight if kind != "repair" else 0.0
+                       for kind, weight in zip(kinds, weights)]
+        kind = self.rng.choices(kinds, weights=weights, k=1)[0]
+        self.spawn_powerup(kind, x, y)
+
+    def spawn_powerup(self, kind: str, x: float, y: float) -> None:
+        self.powerups.append(PowerUp(
+            kind=kind,
+            x=clamp(x - POWERUP_SIZE / 2, LEFT_WALL,
+                    RIGHT_WALL - POWERUP_SIZE),
+            y=y,
+        ))
+
+    def update_powerups(self, dt: float) -> None:
+        """Fall the capsules and collect the ones the ship touches."""
+        keep = []
+        player_rect = self.player.rect()
+        for powerup in self.powerups:
+            powerup.y += powerup.vy * dt
+            if powerup.rect().colliderect(player_rect):
+                self.apply_powerup(powerup)
+                continue
+            if powerup.y <= FLOOR_Y:
+                keep.append(powerup)
+        self.powerups = keep
+
+    def apply_powerup(self, powerup: PowerUp) -> None:
+        kind = powerup.kind
+        colour = POWERUP_COLORS.get(kind, (255, 255, 255))
+        if kind == "rapid":
+            self.player.rapid = POWERUP_RAPID_TIME
+            text = "RAPID FIRE"
+        elif kind == "triple":
+            self.player.triple = POWERUP_TRIPLE_TIME
+            text = "TRIPLE SHOT"
+        else:
+            restored = sum(shield.repair() for shield in self.shields)
+            # Count the rebuilt cells as deployed, so the run's bunker
+            # percentage stays honest.
+            self.bunker_cells_total += restored
+            text = "BUNKERS REPAIRED" if restored else "BUNKERS INTACT"
+        x, y = powerup.x + POWERUP_SIZE / 2, powerup.y
+        self.play("power")
+        self.spawn_popup(x, y - 5, text, colour)
+        self.flashes.append([x, y + POWERUP_SIZE / 2, 0.18, 0.18,
+                             colour, 22.0])
 
     def check_drifter_collisions(self, d: Drifter) -> None:
         """Damage is mutual, but only your bullets and your ship kill a badge.
@@ -602,6 +676,7 @@ class Game(RenderMixin):
                 self.spawn_popup(hit.x + ALIEN_W / 2, hit.y,
                                  f"+{points}",
                                  ROW_COLORS[hit.row % len(ROW_COLORS)])
+                self.maybe_drop_powerup(hit.x + ALIEN_W / 2, hit.y)
         self.player_bullets = surviving
 
         # Alien bullets: bunkers first, then the player.

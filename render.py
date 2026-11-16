@@ -22,6 +22,9 @@ from config import (
     PLAYER_COLOR,
     PLAYER_W,
     POPUP_RISE,
+    POWERUP_COLORS,
+    POWERUP_LABELS,
+    POWERUP_SIZE,
     RIGHT_WALL,
     ROW_COLORS,
     SHIELD_TOP_COLOR,
@@ -169,6 +172,7 @@ class RenderMixin:
             self.draw_shields(surface)
             self.draw_drifters(surface)
             self.draw_bullets(surface)
+            self.draw_powerups(surface)
             self.draw_player(surface)
             self.draw_debris(surface)
             self.draw_popups(surface)
@@ -320,6 +324,25 @@ class RenderMixin:
             r = b.rect()
             pygame.draw.rect(surface, ALIEN_BULLET_COLOR, r, border_radius=3)
 
+    def draw_powerups(self, surface: pygame.Surface) -> None:
+        tick = pygame.time.get_ticks()
+        for powerup in self.powerups:
+            colour = POWERUP_COLORS.get(powerup.kind, (255, 255, 255))
+            bob = int(math.sin(tick / 170.0 + powerup.x * 0.05) * 1.5)
+            rect = pygame.Rect(int(powerup.x), int(powerup.y) + bob,
+                               POWERUP_SIZE, POWERUP_SIZE)
+            glow = pygame.Surface((rect.w + 12, rect.h + 12), pygame.SRCALPHA)
+            pygame.draw.rect(glow, (*colour, 50), glow.get_rect(),
+                             border_radius=10)
+            surface.blit(glow, (rect.x - 6, rect.y - 6))
+            pygame.draw.rect(surface, colour, rect, border_radius=5)
+            pygame.draw.rect(surface, (18, 20, 34), rect, width=2,
+                             border_radius=5)
+            label = self.font_tiny.render(POWERUP_LABELS[powerup.kind],
+                                          True, (18, 20, 34))
+            surface.blit(label, (rect.centerx - label.get_width() // 2,
+                                 rect.centery - label.get_height() // 2))
+
     def draw_player(self, surface: pygame.Surface) -> None:
         p = self.player
         if p.invulnerable > 0 and int(p.invulnerable * 12) % 2 == 0:
@@ -392,6 +415,17 @@ class RenderMixin:
             x = RIGHT_WALL - 26 * (i + 1)
             pygame.draw.rect(surface, PLAYER_COLOR, (x, 28, 20, 4), border_radius=2)
             pygame.draw.rect(surface, PLAYER_COLOR, (x + 4, 24, 12, 4), border_radius=2)
+
+        # Active boosts, right-aligned under the lives.
+        boosts = []
+        if self.player.rapid > 0:
+            boosts.append(f"RAPID {math.ceil(self.player.rapid)}s")
+        if self.player.triple > 0:
+            boosts.append(f"TRIPLE {math.ceil(self.player.triple)}s")
+        if boosts:
+            label = self.font_tiny.render("   ".join(boosts), True,
+                                          (255, 230, 150))
+            surface.blit(label, (RIGHT_WALL - label.get_width(), 44))
 
     def draw_leaderboard(self, surface: pygame.Surface) -> None:
         """Scrollable top-100 table of run scores and shooting stats."""
