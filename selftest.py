@@ -1,0 +1,490 @@
+"""Headless smoke tests and invariant checks."""
+
+from __future__ import annotations
+
+import json
+import random
+from array import array
+from pathlib import Path
+
+import pygame
+
+from assets import make_pulp_background
+from config import (
+    ALIEN_BULLET_SPEED,
+    ALIEN_H,
+    ALIEN_W,
+    AVATAR_SHEET,
+    DRIFTER_POINTS,
+    DRIFTER_SIZE,
+    DRIFTER_SPAWN_DELAY,
+    DROP_DISTANCE,
+    FLOOR_Y,
+    HEIGHT,
+    LANDING_Y,
+    LEADERBOARD_SIZE,
+    LEFT_WALL,
+    PLAYER_BULLET_SPEED,
+    RIGHT_WALL,
+    SHIELD_COLS,
+    SHIELD_ROWS,
+    SHIELDS,
+    WIDTH,
+)
+from deps import metal, np
+from entities import Bullet, Drifter, Shield
+from game import Game
+from leaderboard import Leaderboard, _score_order
+
+
+def selftest(seconds: float) -> int:
+    """Headless smoke test: play with pseudo-random input and assert invariants."""
+    import os
+    import tempfile
+
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+
+    pygame.init()
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    tempdir = tempfile.TemporaryDirectory(prefix="space_invaders_selftest_")
+    scores = Leaderboard(Path(tempdir.name) / "leaderboard.json")
+    game = Game(seed=1234, leaderboard=scores)
+    game.start()
+
+    check_shields(scores)
+    check_drifters(scores)
+    check_leaderboard()
+    check_stats()
+    check_scaling(game)
+    check_backgrounds(scores)
+    check_music()
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+
+    dt = 1 / 60
+    frames = int(seconds / dt)
+    rng = random.Random(7)
+    max_aliens_seen = 0
+    waves_seen = 1
+    hits = 0
+    move = 0
+    eroded_seen = False
+
+    for frame in range(frames):
+        if frame % 25 == 0:
+            move = rng.choice((-1, 0, 0, 1))
+        fire = frame % 3 == 0
+        if game.state == "gameover":
+            game.start()
+        game.update(dt, move, fire)
+        game.update_effects(dt)
+        game.draw(game.canvas)
+        game.present(screen)
+        eroded_seen = eroded_seen or any(
+            s.alive_cells() < s.cols * s.rows for s in game.shields)
+        max_aliens_seen = max(max_aliens_seen, len(game.alive_aliens()))
+        waves_seen = max(waves_seen, game.wave)
+        hits = max(hits, game.score)
+        for b in game.player_bullets + game.alien_bullets:
+            r = b.rect()
+            assert -50 <= r.x <= WIDTH + 50, f"bullet escaped horizontally: {r}"
+            assert -100 <= r.y <= HEIGHT + 100, f"bullet escaped vertically: {r}"
+        for a in game.alive_aliens():
+            r = a.rect()
+            assert LEFT_WALL - DROP_DISTANCE <= r.x <= RIGHT_WALL, f"alien out of bounds: {r}"
+            assert 0 <= r.y <= FLOOR_Y + ALIEN_H, f"alien below floor without game over: {r}"
+        assert 0 <= game.shots_hit <= game.shots_fired
+        assert 0 <= game.bunker_cells_shot <= game.bunker_cells_total
+        stats = game.run_stats()
+        assert 0.0 <= stats["bunker"] <= 100.0
+        assert 0.0 <= stats["accuracy"] <= 100.0
+
+    print(f"selftest ok: {frames} frames, max aliens {max_aliens_seen}, "
+          f"waves {waves_seen}, score {hits}, state {game.state}, "
+          f"shields eroded: {eroded_seen}")
+    tempdir.cleanup()
+    pygame.quit()
+    return 0
+
+
+def check_shields(leaderboard: Leaderboard | None = None) -> None:
+    """Direct checks: bunkers exist, stop bullets, and erode gradually."""
+    game = Game(seed=5, leaderboard=leaderboard)
+    game.start()
+    assert len(game.shields) == SHIELDS
+
+    shield = game.shields[1]
+    full = shield.alive_cells()
+    assert 0 < full < SHIELD_COLS * SHIELD_ROWS, "shield shape not carved"
+    probe = Shield(0, 0, seed=8)
+    before = probe.alive_cells()
+    lost = probe.damage(6, 11)
+    assert lost == before - probe.alive_cells() > 0, "damage count is wrong"
+    cx = shield.x + shield.width / 2
+
+    # A falling enemy bullet is absorbed by the bunker and chips it.
+    game.alien_bullets.append(Bullet(x=cx - 3, y=shield.y - 20,
+                                     vy=ALIEN_BULLET_SPEED, from_player=False))
+    for _ in range(12):
+        game.update(1 / 60)
+    assert not game.alien_bullets, "enemy bullet passed through the bunker"
+    assert shield.alive_cells() < full, "bunker did not erode"
+
+    # Hits in the same spot tunnel a hole instead of dissolving the whole thing.
+    game.player.invulnerable = 99
+    for _ in range(10):
+        game.alien_bullets.append(Bullet(x=cx - 3, y=shield.y - 2,
+                                         vy=ALIEN_BULLET_SPEED, from_player=False))
+        game.update(1 / 60)
+    assert 0 < shield.alive_cells() < full, "bunker eroded too much or not at all"
+
+    # Player shots chip bunkers too (classic behaviour). Aim at an intact
+    # column so the earlier tunnel doesn't swallow the shot.
+    before = shield.alive_cells()
+    game.player_bullets.append(Bullet(x=cx - 20, y=shield.y + shield.height - 2,
+                                      vy=-PLAYER_BULLET_SPEED, from_player=True))
+    for _ in range(8):
+        game.update(1 / 60)
+    assert shield.alive_cells() < before, "player shots did not chip the bunker"
+
+    # Aliens marching through a bunker destroy the cells they touch.
+    bunker = game.shields[2]
+    before = bunker.alive_cells()
+    alien = game.alive_aliens()[0]
+    alien.x = bunker.x + 4
+    alien.y = bunker.y + 4
+    game.update(1 / 60)
+    assert bunker.alive_cells() < before, "aliens did not crush the bunker"
+
+
+def check_drifters(leaderboard: Leaderboard | None = None) -> None:
+    """Badges bounce, only your bullets/ship kill them, and one per wave."""
+    probe = Game(seed=5, leaderboard=leaderboard)
+    if not probe.avatar_tiles:
+        print(f"drifters: {AVATAR_SHEET} not found, skipping hazard checks")
+        return
+    assert len(probe.avatar_tiles) == 6, "expected six avatars on the sheet"
+    image, palette = probe.avatar_tiles[0]
+    assert image.get_width() > ALIEN_W and image.get_height() > ALIEN_H
+    assert palette, "avatar palette came out empty"
+
+    def fresh() -> Game:
+        game = Game(seed=5, leaderboard=leaderboard)
+        game.start()
+        return game
+
+    # Bounces off the arena edges.
+    game = fresh()
+    drifter = Drifter(image, palette, LEFT_WALL + 1, 300, -100, 40)
+    game.drifters = [drifter]
+    game.update_drifters(0.05)
+    assert drifter.vx > 0 and drifter.x >= LEFT_WALL
+    drifter = Drifter(image, palette, 400, FLOOR_Y - 10, 50, 100)
+    game.drifters = [drifter]
+    game.update_drifters(0.05)
+    assert drifter.vy < 0 and drifter.y + drifter.size <= FLOOR_Y
+
+    # A player bullet destroys it, pays points, and makes palette-coloured FX.
+    game = fresh()
+    game.score = 0
+    game.drifters = [Drifter(image, palette, 400, 300, 0, 0)]
+    game.player_bullets.append(Bullet(410, 310, -PLAYER_BULLET_SPEED, True))
+    game.update_drifters(1 / 60)
+    assert not game.drifters and game.score == DRIFTER_POINTS
+    assert game.debris and game.rings and game.flashes
+
+    # Enemy fire is swallowed but does NOT pop the badge.
+    game = fresh()
+    game.drifters = [Drifter(image, palette, 400, 300, 0, 0)]
+    game.alien_bullets.append(Bullet(408, 310, ALIEN_BULLET_SPEED, False))
+    game.update_drifters(1 / 60)
+    assert game.drifters and not game.alien_bullets
+
+    # Aliens are solid but unharmed: the badge bounces off and survives.
+    game = fresh()
+    target = game.aliens[0]
+    for a in game.aliens:
+        if a is not target:
+            a.alive = False
+    game.drifters = [Drifter(image, palette, target.x - DRIFTER_SIZE + 4,
+                             target.y, 80, 0)]
+    game.update_drifters(1 / 60)
+    assert game.drifters and target.alive
+    assert game.drifters[0].vx < 0, "badge did not bounce off the alien"
+
+    # It eats a hole in a bunker and ricochets off it.
+    game = fresh()
+    bunker = game.shields[1]
+    cells = bunker.alive_cells()
+    game.drifters = [Drifter(image, palette, bunker.x + 10,
+                             bunker.y - DRIFTER_SIZE + 4, 0, 80)]
+    game.update_drifters(1 / 60)
+    assert game.drifters and bunker.alive_cells() < cells
+    assert game.drifters[0].vy < 0, "badge did not bounce off the bunker"
+
+    # It kills the player too.
+    game = fresh()
+    game.player.invulnerable = 0
+    lives = game.lives
+    game.drifters = [Drifter(image, palette, game.player.x + 5,
+                             game.player.y - 10, 0, 0)]
+    game.update_drifters(1 / 60)
+    assert not game.drifters and game.lives == lives - 1
+
+    # And one spawns on its own shortly after a wave starts...
+    game = fresh()
+    game.update_drifters(DRIFTER_SPAWN_DELAY + 0.1)
+    assert len(game.drifters) == 1
+
+    # ...but never more than the wave number: 1, 2, 3, ...
+    for wave, expected in ((1, 1), (2, 2), (3, 3), (7, 7)):
+        game = fresh()
+        game.wave = wave
+        game.drifters = []
+        game.drifter_timer = 0.0
+        peak = 0
+        for _ in range(60 * 30):
+            game.update_drifters(1 / 60)
+            game.drifter_timer = 0.0  # try to force a spawn every frame
+            peak = max(peak, len(game.drifters))
+        assert peak == expected, f"wave {wave}: peak {peak}, expected {expected}"
+
+
+def check_leaderboard() -> None:
+    """The table keeps the best 100, sorts correctly, and survives reloads."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "leaderboard.json"
+        board = Leaderboard(path)
+        assert board.entries == [], "new leaderboard should be empty"
+
+        for i in range(LEADERBOARD_SIZE + 12):
+            board.add({
+                "score": (i * 137) % 100000,
+                "wave": 1 + i % 9,
+                "avatars": i % 4,
+                "bunker": (i * 1.7) % 100,
+                "accuracy": (i * 3.1) % 100,
+            })
+        assert len(board.entries) == LEADERBOARD_SIZE, (
+            f"kept {len(board.entries)} entries, expected {LEADERBOARD_SIZE}")
+        assert board.entries == sorted(board.entries, key=_score_order), (
+            "leaderboard is not sorted")
+        assert Leaderboard(path).entries == board.entries, (
+            "leaderboard did not survive a reload")
+
+        rank = board.add({"score": 10 ** 6, "wave": 7, "avatars": 9,
+                          "bunker": 42.5, "accuracy": 88.8})
+        assert rank == 1, f"top score ranked {rank}"
+        assert len(board.entries) == LEADERBOARD_SIZE
+
+        # Higher waves win score ties, then better accuracy.
+        ties = Leaderboard(Path(tmp) / "ties.json")
+        ties.add({"score": 70, "wave": 2, "avatars": 0,
+                  "bunker": 0, "accuracy": 10})
+        ties.add({"score": 70, "wave": 5, "avatars": 0,
+                  "bunker": 0, "accuracy": 10})
+        ties.add({"score": 70, "wave": 5, "avatars": 0,
+                  "bunker": 0, "accuracy": 80})
+        assert [e["wave"] for e in ties.entries] == [5, 5, 2]
+        assert ties.entries[0]["accuracy"] == 80
+
+        # A corrupt or partial file is ignored instead of crashing the game.
+        path.write_text("{not json", encoding="utf-8")
+        assert Leaderboard(path).entries == []
+        path.write_text(json.dumps([
+            {"score": "nope"},
+            {"name": "Runner_12345", "score": 99999, "wave": 3,
+             "avatars": 1, "bunker": 1.0, "accuracy": 1.0},
+            {"score": 10, "wave": "4", "avatars": 2,
+             "bunker": 12.5, "accuracy": 33.3},
+        ]), encoding="utf-8")
+        loaded = Leaderboard(path).entries
+        assert len(loaded) == 1 and loaded[0]["wave"] == 4
+
+
+def check_stats() -> None:
+    """Hit accuracy and bunker destruction track exactly the requested rules."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        board = Leaderboard(Path(tmp) / "stats.json")
+        game = Game(seed=12, leaderboard=board)
+        game.start()
+        assert game.shots_fired == 0 and game.shots_hit == 0
+        assert game.avatars_killed == 0
+
+        # A player bullet that kills an alien counts as a hit.
+        target = game.alive_aliens()[0]
+        game.player_bullets = [Bullet(target.x + 4, target.y + 4,
+                                      -PLAYER_BULLET_SPEED, True)]
+        game.shots_fired = 1
+        game.check_collisions()
+        assert not target.alive, "test bullet missed its alien"
+        assert game.shots_hit == 1
+
+        # A player bullet stopped by a bunker is a miss, not a hit.
+        shield = game.shields[0]
+        game.player_bullets = [Bullet(shield.x + shield.width // 2,
+                                      shield.y - 4,
+                                      -PLAYER_BULLET_SPEED, True)]
+        game.shots_fired += 1
+        game.check_collisions()
+        assert game.shots_hit == 1, "bunker hit was counted as a target hit"
+        assert game.run_stats()["accuracy"] == 50.0
+
+        # Bunker destruction only counts cells wrecked by player bullets.
+        before = game.bunker_cells_shot
+        cell_row, cell_col = next(
+            (r, c) for r in range(shield.rows) for c in range(shield.cols)
+            if shield.cells[r][c])
+        game.damage_shield(pygame.Rect(shield.x + cell_col * shield.cell,
+                                       shield.y + cell_row * shield.cell,
+                                       shield.cell, shield.cell),
+                           -1, by_player=True)
+        assert game.bunker_cells_shot > before
+        stats = game.run_stats()
+        assert 0.0 < stats["bunker"] <= 100.0
+
+        # Every badge death is counted.
+        if game.avatar_tiles:
+            image, palette = game.avatar_tiles[0]
+            badge = Drifter(image, palette, 300, 300, 0, 0)
+            game.drifters = [badge]
+            game.destroy_drifter(badge)
+            assert game.avatars_killed == 1
+
+        # The finished run is saved once, with the same numbers.
+        game.game_over()
+        game.record_score()
+        assert len(board.entries) == 1
+        saved = board.entries[0]
+        assert saved["avatars"] == game.avatars_killed
+        assert saved["accuracy"] == game.run_stats()["accuracy"]
+        assert saved["bunker"] == game.run_stats()["bunker"]
+        assert game.last_rank == 1
+        game.record_score()
+        assert len(board.entries) == 1, "run was recorded twice"
+
+        # A game that ends during update records itself exactly once, and a
+        # restart wipes the run statistics.
+        auto_board = Leaderboard(Path(tmp) / "auto.json")
+        auto = Game(seed=13, leaderboard=auto_board)
+        auto.start()
+        auto.score = 321
+        auto.wave = 4
+        auto.alive_aliens()[0].y = LANDING_Y
+        auto.update(1 / 60)
+        assert auto.state == "gameover"
+        assert len(auto_board.entries) == 1, "automatic recording failed"
+        assert auto_board.entries[0]["score"] == 321
+        assert auto.last_rank == 1
+        auto.start()
+        assert (auto.shots_fired, auto.shots_hit, auto.avatars_killed) == (
+            0, 0, 0)
+
+        # Scores screen opens from any state, renders, scrolls and returns.
+        view = Game(seed=2, leaderboard=auto_board)
+        view.show_scores()
+        assert view.state == "scores"
+        view.draw(view.canvas)          # empty table must render
+        view.scroll_scores(1)
+        view.close_scores()
+        assert view.state == "title"
+        view.start()
+        view.show_scores()
+        view.scroll_scores(3)
+        view.draw(view.canvas)          # populated table must render
+        view.close_scores()
+        assert view.state == "playing"
+
+
+def check_music() -> None:
+    """The soundtrack must be audible, deterministic per seed, and varied."""
+    if metal is None:
+        print("music: numpy unavailable, skipping synth checks")
+        return
+
+    short = 0.2
+    first = metal.compose(seed=42, shorten=short)
+    again = metal.compose(seed=42, shorten=short)
+    other = metal.compose(seed=43, shorten=short)
+
+    assert first == again, "same seed produced different music"
+    assert first != other, "different seeds produced identical music"
+
+    samples = array("h")
+    samples.frombytes(first)
+    assert len(samples) > 44100, "track is too short"
+    assert len(samples) % 2 == 0, "stereo buffer has a half frame"
+    peak = max(abs(min(samples)), abs(max(samples)))
+    assert peak > 3000, f"track is silent (peak {peak})"
+
+    # The new mix bus is stereo, so the two channels must not be identical.
+    left = samples[0::2]
+    right = samples[1::2]
+    assert left != right, "track is dual-mono, expected stereo"
+    stereo = np.frombuffer(first, dtype=np.int16).astype(np.float32) / 32768.0
+    rms = float(np.sqrt(np.mean(stereo * stereo)))
+    assert 0.02 < rms < 0.45, f"unexpected mastering level (rms {rms:.3f})"
+    assert float(np.max(np.abs(stereo))) < 0.99, "track is clipping"
+
+    # Every genre renders, is audible, and sounds different from the rest.
+    tracks = {}
+    for genre in metal.GENRES:
+        data = metal.compose(seed=7, shorten=0.12, genre=genre)
+        tracks[genre] = data
+        samples = array("h")
+        samples.frombytes(data)
+        assert len(samples) > 22050, f"{genre} track is too short"
+        peak = max(abs(min(samples)), abs(max(samples)))
+        assert peak > 3000, f"{genre} track is silent (peak {peak})"
+    assert len(set(tracks.values())) == len(tracks), "genres sound identical"
+
+    for previous in metal.GENRES:
+        for _ in range(12):
+            assert metal.pick_genre(previous, random.Random(3)) != previous
+
+
+def check_backgrounds(leaderboard: Leaderboard | None = None) -> None:
+    """Each wave gets a different, dim pulp-paperback space painting."""
+    first = make_pulp_background(random.Random(10))
+    same = make_pulp_background(random.Random(10))
+    other = make_pulp_background(random.Random(11))
+    assert first.get_size() == (WIDTH, HEIGHT)
+    assert (pygame.image.tobytes(first, "RGB")
+            == pygame.image.tobytes(same, "RGB"))
+    assert (pygame.image.tobytes(first, "RGB")
+            != pygame.image.tobytes(other, "RGB"))
+    alpha = first.get_alpha()
+    assert alpha is not None and 0 < alpha < 160, f"backdrop alpha {alpha}"
+
+    game = Game(seed=77, leaderboard=leaderboard)
+    before_art = pygame.image.tobytes(game.pulp_bg, "RGB")
+    before_genre = game.music_genre
+    game.next_wave()
+    assert pygame.image.tobytes(game.pulp_bg, "RGB") != before_art, (
+        "backdrop did not change with the wave")
+    if metal is not None:
+        assert game.music_genre != before_genre, "wave reused the same genre"
+
+    # The bag must use every genre before any of them comes back around.
+    game = Game(seed=1, leaderboard=leaderboard)
+    seen = [game.music_genre]
+    for _ in range(len(metal.GENRES) - 1 if metal else 0):
+        game.next_wave()
+        seen.append(game.music_genre)
+    if metal is not None:
+        assert len(set(seen)) == len(metal.GENRES), (
+            f"genre bag repeated early: {seen}")
+
+
+def check_scaling(game: Game) -> None:
+    """The canvas must letterbox into arbitrary window/fullscreen sizes."""
+    for size in ((1920, 1080), (1280, 1024), (800, 600), (640, 480), (2560, 1440)):
+        screen = pygame.display.set_mode(size)
+        game.draw(game.canvas)
+        game.present(screen)
+        assert screen.get_size() == size
+    pygame.display.set_mode((WIDTH, HEIGHT))
