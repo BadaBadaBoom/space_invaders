@@ -285,6 +285,8 @@ class RenderMixin:
         surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 566))
 
     def draw_overlay(self, surface: pygame.Surface) -> None:
+        # No story card unless draw_gameover_story runs this frame.
+        self.story_panel_rect = None
         if self.state == "playing":
             return
         shade = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
@@ -384,6 +386,8 @@ class RenderMixin:
             surface.blit(rank, (WIDTH // 2 - rank.get_width() // 2, 190))
 
         panel = pygame.Rect(34, 222, 732, 288)
+        # Marks the NASA story panel that the CRT pass leaves unfiltered.
+        self.story_panel_rect = panel
         pygame.draw.rect(surface, (14, 18, 38), panel, border_radius=10)
         pygame.draw.rect(surface, (46, 54, 92), panel, width=1, border_radius=10)
 
