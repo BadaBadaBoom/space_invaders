@@ -19,6 +19,7 @@ leaderboard.py persistent top-100 table
 audio.py       MusicPlayer worker thread and mixer channels
 render.py      RenderMixin: playfield, HUD, leaderboard, overlays
 crt.py         pure-pygame CRT post-process overlay
+news.py        NASA story feed for the game-over card
 game.py        Game state, collisions, waves, and scoring
 selftest.py    headless smoke tests and invariant checks
 covers.py      procedural 1960s paperback-cover painter
