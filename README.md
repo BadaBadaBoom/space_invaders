@@ -106,6 +106,7 @@ and painted backdrops, but no soundtrack.
 | `P` | Pause / resume |
 | `L` | High-score leaderboard (up/down to scroll) |
 | `M` | Mute / unmute music |
+| `-` / `=` | Music volume down / up (10% steps) |
 | `F11` or `Alt+Enter` | Fullscreen on/off |
 | `Enter` | Start / restart (composes a new song) |
 | `Esc` | Leave fullscreen, or quit |

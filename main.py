@@ -6,6 +6,7 @@ Controls
     Space                     fire
     P                         pause
     M                         mute music
+    - / =                     music volume down / up
     L                         high-score leaderboard
     F11  /  Alt+Enter         fullscreen (the view scales to any size)
     Enter                     start / restart (composes a new song)
@@ -39,7 +40,7 @@ except ModuleNotFoundError:
         "or install it:              python -m pip install pygame-ce"
     )
 
-from audio import MusicPlayer
+from audio import DEFAULT_VOLUME, VOLUME_STEP, MusicPlayer
 from config import (
     FPS,
     HEIGHT,
@@ -68,8 +69,9 @@ def main() -> int:
                         help="seconds of gameplay to simulate in --selftest")
     parser.add_argument("--no-music", action="store_true",
                         help="start with the soundtrack disabled")
-    parser.add_argument("--music-volume", type=float, default=0.32,
-                        help="music volume, 0.0 - 1.0 (default 0.32)")
+    parser.add_argument("--music-volume", type=float, default=DEFAULT_VOLUME,
+                        help=f"music volume, 0.0 - 1.0 "
+                             f"(default {DEFAULT_VOLUME})")
     parser.add_argument("--export-music", metavar="FILE",
                         help="render one track to a .wav file and exit")
     parser.add_argument("--export-genre", metavar="GENRE",
@@ -104,6 +106,7 @@ def main() -> int:
     fire_was_down = False
     fullscreen = False
     running = True
+    volume_hint: tuple[str, int] | None = None
 
     def toggle_fullscreen() -> None:
         nonlocal screen, fullscreen
@@ -163,8 +166,24 @@ def main() -> int:
                     last_wave = game.wave
                 elif event.key == pygame.K_p:
                     game.toggle_pause()
+                elif event.key in (pygame.K_EQUALS, pygame.K_PLUS,
+                                   pygame.K_KP_PLUS):
+                    level = music_player.change_volume(VOLUME_STEP)
+                    volume_hint = (f"MUSIC {round(level * 100)}%",
+                                   pygame.time.get_ticks() + 1400)
+                elif event.key in (pygame.K_MINUS, pygame.K_UNDERSCORE,
+                                   pygame.K_KP_MINUS):
+                    level = music_player.change_volume(-VOLUME_STEP)
+                    volume_hint = (f"MUSIC {round(level * 100)}%",
+                                   pygame.time.get_ticks() + 1400)
                 elif event.key == pygame.K_m:
-                    music_player.toggle_mute()
+                    if music_player.toggle_mute():
+                        volume_hint = ("MUSIC OFF",
+                                       pygame.time.get_ticks() + 1400)
+                    else:
+                        volume_hint = (
+                            f"MUSIC {music_player.volume_percent}%",
+                            pygame.time.get_ticks() + 1400)
 
         move, fire_down = read_input()
         fire = fire_down and not fire_was_down  # only listen for fresh presses
@@ -178,9 +197,15 @@ def main() -> int:
                 music_player.request(game.music_genre)
 
         game.draw(game.canvas)
+        now = pygame.time.get_ticks()
+        hint = None
+        if volume_hint is not None and now < volume_hint[1]:
+            hint = volume_hint[0]
         if music_player.muted and game.state not in ("title", "scores"):
-            muted = game.font_small.render("MUSIC OFF", True, UI_DIM)
-            game.canvas.blit(muted, (RIGHT_WALL - muted.get_width(), 44))
+            hint = "MUSIC OFF"
+        if hint:
+            label = game.font_small.render(hint, True, UI_DIM)
+            game.canvas.blit(label, (RIGHT_WALL - label.get_width(), 44))
         game.present(screen)
         pygame.display.flip()
 
