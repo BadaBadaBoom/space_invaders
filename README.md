@@ -109,7 +109,7 @@ and painted backdrops, but no soundtrack.
 | `L` | High-score leaderboard (up/down to scroll) |
 | `M` | Mute / unmute music |
 | `↑` / `↓` | Music volume up / down (10% steps) |
-| keypad `+` | Next song (new composition, same genre) |
+| numpad `+` | Next song (new composition, same genre) |
 | `F3` | CRT filter: off / low / medium / high |
 | `[` / `]` | CRT intensity down / up (10% steps) |
 | `F11` or `Alt+Enter` | Fullscreen on/off |
