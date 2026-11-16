@@ -451,6 +451,21 @@ def _schroeder_reverb(send: np.ndarray, seed: int
     return wet_l.astype(np.float32), wet_r.astype(np.float32)
 
 
+def _boom_tail(send: np.ndarray, spread: int) -> np.ndarray:
+    """A long, diffuse tail for the one-shot victory explosion.
+
+    Unlike the loop reverb above this one starts from silence, so it decays
+    naturally instead of wrapping the next bar back onto the hit.
+    """
+    out = np.zeros_like(send)
+    for delay in (1116, 1277, 1356, 1491):
+        out += _comb(send, delay + spread, 0.78)
+    out *= 0.25
+    for delay in (556, 441):
+        out = _allpass(out, delay + spread, 0.5)
+    return out
+
+
 def _ping_pong(send: np.ndarray, delay_samples: int,
                feedback: float = 0.42, taps: int = 7
                ) -> tuple[np.ndarray, np.ndarray]:
@@ -1526,3 +1541,55 @@ def compose_wav(seed: int | None = None, path: str = "track.wav",
         fh.setframerate(SR)
         fh.writeframes(data)
     return path
+
+
+def explosion(seed: int | None = None, duration: float = 2.2) -> bytes:
+    """One-shot victory boom: sub drop, blast body, debris, long tail.
+
+    Returns interleaved int16 stereo at SR, exactly like compose(), so the
+    caller can hand it straight to pygame.mixer.Sound(buffer=...).
+    """
+    rng = np.random.default_rng(seed)
+    n = max(1, int(duration * SR))
+    t = np.arange(n, dtype=np.float32) / SR
+    white = rng.normal(0.0, 1.0, n).astype(np.float32)
+
+    # Sub-bass drop, saturated for weight.
+    freq = 26.0 + 69.0 * np.exp(-t * 5.5)
+    sub = np.sin(2.0 * np.pi * np.cumsum(freq) / SR)
+    sub *= np.exp(-t * 1.9) * (1.0 - np.exp(-t * 900.0))
+    sub = np.tanh(sub * 2.2)
+
+    # Blast body, the opening crack, and a short low thump.
+    smooth = np.ones(48, dtype=np.float32) / 48.0
+    body = np.convolve(white, smooth, mode="same") * np.exp(-t * 4.2) * 2.2
+    crack = np.diff(white, prepend=0.0) * np.exp(-t * 26.0) * 0.55
+    impact = np.convolve(white, np.ones(5, np.float32) / 5.0, mode="same")
+    impact *= np.exp(-t * 60.0) * 1.4
+
+    # Debris: sparse cracks sprinkled through the decaying tail.
+    debris = np.zeros(n, dtype=np.float32)
+    for hit in rng.integers(0, n, size=90):
+        length = min(n - hit, int(SR * rng.uniform(0.004, 0.02)))
+        decay = np.exp(-np.arange(length) / max(SR * 0.004, 1.0))
+        click = rng.normal(0.0, 1.0, length).astype(np.float32) * decay
+        level = float(np.exp(-hit / SR * 2.2)) * float(rng.uniform(0.05, 0.22))
+        debris[hit:hit + length] += click * level
+
+    mono = 0.9 * sub + 0.8 * body + crack + 0.7 * impact + debris
+    left = np.tanh(1.15 * (mono + 0.55 * _boom_tail(mono, 0)))
+    right = np.tanh(1.15 * (mono + 0.55 * _boom_tail(mono, 211)))
+
+    peak = max(float(np.abs(left).max()), float(np.abs(right).max())) or 1.0
+    left *= 0.95 / peak
+    right *= 0.95 / peak
+
+    fade = min(n, int(0.03 * SR))
+    ramp = np.linspace(1.0, 0.0, fade, dtype=np.float32)
+    left[-fade:] *= ramp
+    right[-fade:] *= ramp
+
+    pcm = np.empty(2 * n, dtype=np.int16)
+    pcm[0::2] = np.clip(left * 32767.0, -32768, 32767).astype(np.int16)
+    pcm[1::2] = np.clip(right * 32767.0, -32768, 32767).astype(np.int16)
+    return pcm.tobytes()
