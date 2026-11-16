@@ -117,6 +117,8 @@ class Game(RenderMixin):
         self.bunker_cells_total = 0  # cells deployed across all waves this run
         self.last_rank: int | None = None
         self.pending_record = False
+        # NASA story card for the game-over screen (set by main).
+        self.story = None
         # Snapshot the board's best so this run can celebrate beating it once.
         self.record_to_beat = self.leaderboard.best
         self.record_beaten = False
