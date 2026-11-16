@@ -41,6 +41,9 @@ class MusicPlayer:
         self.prepared_genre: str | None = None
         self.prepare_thread: threading.Thread | None = None
         self.prepare_generation = 0
+        # Genre currently being rendered by an in-flight prepare worker.  Used
+        # to make repeated prepare() calls for the same genre idempotent.
+        self.preparing_genre: str | None = None
         if self.enabled:
             pygame.mixer.set_num_channels(16)
             self.channels = [pygame.mixer.Channel(14), pygame.mixer.Channel(15)]
@@ -48,33 +51,48 @@ class MusicPlayer:
     def prepare(self, genre: str) -> None:
         """Render *genre* into the single prepared slot on a worker thread.
 
-        Never blocks the caller.  Each call bumps a generation counter; a
-        worker only publishes its track if it is still current when it
-        finishes, so a newer prepare supersedes (and discards) an older one.
+        Never blocks the caller.  Calling twice for the same genre is a no-op
+        while a track for it is already parked or still being rendered.  A
+        prepare for a different genre supersedes the old one: it bumps the
+        generation counter and takes over the single slot, so a stale worker
+        that finishes later has its result discarded.
         """
         if not self.enabled:
             return
         with self.lock:
+            # Already prepared and parked for this genre, or a worker is still
+            # rendering it: nothing to do.
+            if ((self.prepared is not None and self.prepared_genre == genre)
+                    or self.preparing_genre == genre):
+                return
+            # A different genre supersedes the old prepare.  Clear the single
+            # slot so no stale track survives, and invalidate any in-flight
+            # worker before starting the new one.
             self.prepare_generation += 1
             generation = self.prepare_generation
+            self.preparing_genre = genre
+            self.prepared = None
+            self.prepared_genre = None
         seed = random.randrange(1 << 30)
-        self.prepare_thread = threading.Thread(
+        thread = threading.Thread(
             target=self._prepare_compose, args=(seed, genre, generation),
             daemon=True)
-        self.prepare_thread.start()
+        self.prepare_thread = thread
+        thread.start()
 
     def _prepare_compose(self, seed: int, genre: str, generation: int) -> None:
         try:
             data: bytes | None = metal.compose(seed, genre=genre)
         except Exception:  # noqa: BLE001 - a failed compose just goes silent
             data = None
-        if not data:
-            return
         with self.lock:
             if generation != self.prepare_generation:
                 return  # superseded by a newer prepare, or already consumed
-            self.prepared = data
-            self.prepared_genre = genre
+            # This worker still owns the slot: mark it done, then publish.
+            self.preparing_genre = None
+            if data:
+                self.prepared = data
+                self.prepared_genre = genre
 
     def _take_prepared(self, genre: str | None) -> bool:
         """Move a matching prepared track into ``pending``; return success."""
@@ -108,6 +126,10 @@ class MusicPlayer:
         """
         if not self.enabled:
             return
+        # Publish the requested genre right away so callers can display it
+        # before the new track has finished rendering.
+        if genre is not None:
+            self.genre = genre
         if self._take_prepared(genre):
             return
         if self.thread and self.thread.is_alive():
@@ -117,8 +139,10 @@ class MusicPlayer:
             self._start(genre)
 
     def next_track(self) -> None:
-        """Skip to a freshly composed song, staying in the current genre."""
-        self.request(self.genre)
+        """Skip to a freshly composed song in a different genre."""
+        current = self.genre
+        genre = metal.pick_genre(current) if metal is not None else None
+        self.request(genre)
 
     def _start(self, genre: str | None = None) -> None:
         self.want_new = False
