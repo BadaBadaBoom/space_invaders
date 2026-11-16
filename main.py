@@ -261,7 +261,14 @@ def main() -> int:
         if hint:
             label = game.font_small.render(hint, True, UI_DIM)
             game.canvas.blit(label, (RIGHT_WALL - label.get_width(), 44))
+        # The NASA story card stays crisp: keep a pre-CRT copy and put it back.
+        panel = getattr(game, "story_panel_rect", None)
+        clean_panel = None
+        if panel is not None and crt.preset != "off":
+            clean_panel = game.canvas.subsurface(panel).copy()
         crt.apply_inplace(game.canvas, t=pygame.time.get_ticks() / 1000)
+        if clean_panel is not None and panel is not None:
+            game.canvas.blit(clean_panel, panel.topleft)
         game.present(screen)
         pygame.display.flip()
 
