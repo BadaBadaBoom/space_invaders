@@ -10,6 +10,9 @@ import pygame
 from config import (
     ALIEN_H,
     ALIEN_W,
+    DRIFTER_LIFE,
+    DRIFTER_POINTS,
+    DRIFTER_POINTS_MIN,
     PLAYER_H,
     PLAYER_W,
     PLAYER_Y,
@@ -91,10 +94,22 @@ class Drifter:
     y: float
     vx: float
     vy: float
+    age: float = 0.0
 
     @property
     def size(self) -> int:
         return self.image.get_width()
+
+    @property
+    def fade(self) -> float:
+        """Brightness from 1.0 at spawn linearly down to 0.0 at end of life."""
+        return max(0.0, min(1.0, 1.0 - self.age / DRIFTER_LIFE))
+
+    @property
+    def value(self) -> int:
+        """Points a bullet kill pays right now, falling with `fade`."""
+        return round(DRIFTER_POINTS_MIN
+                     + (DRIFTER_POINTS - DRIFTER_POINTS_MIN) * self.fade)
 
     def rect(self) -> pygame.Rect:
         return pygame.Rect(int(self.x), int(self.y), self.size, self.size)
