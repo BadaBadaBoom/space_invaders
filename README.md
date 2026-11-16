@@ -243,8 +243,10 @@ seconds later.
 
 ## Power-ups
 
-Roughly one alien kill in fourteen leaves a capsule falling at 95 px/s; catch
-it with the ship before it reaches the floor, where it vanishes.
+Roughly one alien kill in fourteen leaves a capsule falling at 95 px/s. Catch
+it with the ship **or shoot it** — either way the boost is applied, so nothing
+is lost when a badge is falling somewhere you cannot reach. Left alone it
+falls past the floor and vanishes.
 
 | Capsule | Effect |
 | --- | --- |

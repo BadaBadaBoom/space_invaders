@@ -839,6 +839,14 @@ class Game(RenderMixin):
             path = b.sweep_rect()
             if self.damage_shield(path, b.vy, by_player=True):
                 continue
+            shot_powerup = next(
+                (p for p in self.powerups if path.colliderect(p.rect())),
+                None)
+            if shot_powerup is not None:
+                self.powerups = [p for p in self.powerups
+                                 if p is not shot_powerup]
+                self.apply_powerup(shot_powerup)
+                continue
             if self.boss is not None and path.colliderect(self.boss.rect()):
                 self.damage_boss()
                 continue

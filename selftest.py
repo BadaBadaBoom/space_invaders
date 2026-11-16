@@ -414,6 +414,15 @@ def check_powerups() -> None:
     game.update_powerups(0.5)
     assert game.powerups == [], "capsule outlived the floor"
 
+    # Shooting a capsule also collects it, and consumes the bullet.
+    game.player.triple = 0.0
+    game.powerups = [PowerUp("triple", 400, 300)]
+    game.player_bullets = [Bullet(405, 305, -PLAYER_BULLET_SPEED, True)]
+    game.check_collisions()
+    assert game.powerups == [], "shot capsule survived"
+    assert game.player_bullets == [], "shot capsule did not eat the bullet"
+    assert game.player.triple == POWERUP_TRIPLE_TIME
+
     # Rapid fire shortens the cooldown.
     game.player.rapid = 5.0
     game.player.triple = 0.0
