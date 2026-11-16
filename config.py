@@ -64,6 +64,11 @@ DRIFTER_RESPAWN = 4.5
 DRIFTER_POINTS = 50
 # The badge limit is the wave number: 1 on wave 1, 2 on wave 2, and so on.
 
+# NASA story card on the game-over screen.
+NEWS_URL = "https://www.nasa.gov/news/recently-published/"
+NEWS_TIMEOUT = 8.0
+STORY_IMAGE_W, STORY_IMAGE_H = 320, 180
+
 # Persistent high-score table.
 LEADERBOARD_SIZE = 100
 LEADERBOARD_ROWS = 15        # visible rows on the scores screen

@@ -56,6 +56,7 @@ def selftest(seconds: float) -> int:
     check_drifters(scores)
     check_leaderboard()
     check_record_celebration()
+    check_news()
     check_stats()
     check_scaling(game)
     check_backgrounds(scores)
@@ -359,6 +360,106 @@ def check_record_celebration() -> None:
         edge.score = 501
         edge.maybe_celebrate_record()
         assert len(edge.alive_aliens()) == 1, "celebration cleared the wave"
+
+
+def check_news() -> None:
+    """NASA cards parse in page order, follow Next, and advance one round."""
+    from news import (
+        Listing,
+        NewsFeed,
+        Story,
+        _is_junk,
+        page_url,
+        parse_listing,
+        read_block_attrs,
+        summary_from_article,
+    )
+
+    page = """
+    <main>
+      <div class="hds-content-items hds-content-items-list"
+           data-post-type="post,nasa-blog" data-post-id="383829"
+           data-max-num-pages="4066" data-per-page="25"
+           data-current-page="1">
+      <div class="hds-content-item">
+        <a href="https://www.nasa.gov/story-a/" class="hds-content-item-heading">
+          <div class="hds-a11y-heading-22">First &amp; Story</div>
+        </a>
+        <p class="margin-top-0 margin-bottom-1">A real summary &hellip;</p>
+        <img src="https://www.nasa.gov/a.jpg?w=300">
+      </div>
+      <div class="hds-content-item">
+        <a href="https://science.nasa.gov/apod/" class="hds-content-item-heading">
+          <div class="hds-a11y-heading-22">APOD: Sample</div>
+        </a>
+        <p class="margin-top-0 margin-bottom-1">APOD Science APOD Today&rsquo;s
+          APOD Archive Submissions Index Search Calendar</p>
+        <img src="https://assets.science.nasa.gov/b.jpg">
+      </div>
+      </div>
+      <nav class="hds-pagination">
+        <a class="next page-numbers" href="#" aria-label="Goto Next Page"
+           data-page-number="2">Next</a>
+      </nav>
+    </main>
+    """
+    listing = parse_listing(page)
+    assert listing.page == 1 and listing.next_page == 2
+    assert len(listing.stories) == 2
+    first = listing.stories[0]
+    assert first.title == "First & Story", first.title
+    assert first.summary.startswith("A real summary")
+    assert first.image_url.endswith("?w=600"), first.image_url
+    assert listing.stories[1].image_url.endswith("?w=600")
+
+    attrs = read_block_attrs(page)
+    assert attrs["post-id"] == "383829"
+    url = page_url("https://www.nasa.gov/wp-json/nasa-hds/v1/content-lists",
+                   attrs, 2)
+    assert "pageClicked=2" in url and "postId=383829" in url
+
+    assert _is_junk("APOD Science APOD Today's APOD Archive Submissions "
+                    "Index Search Calendar", "APOD")
+    assert not _is_junk("Ice near the summit has shrunk to patches.",
+                        "The Last Ice on Puncak Jaya")
+    assert summary_from_article(
+        '<meta property="og:description" '
+        'content="A proper NASA summary of the mission and its goals.">'
+    ).startswith("A proper NASA summary")
+    assert summary_from_article(
+        "<p>Explanation: How do stars form? Webb took this detailed image "
+        "of a stellar nursery.</p>"
+    ).startswith("How do stars form?")
+
+    # One round consumes one story; crossing the last story loads the page
+    # the Next button points at.
+    a = Story("A", "summary", "link", "")
+    b = Story("B", "summary", "link", "")
+    feed = NewsFeed()
+    feed.stories = [a, b]
+    feed.next_page = 2
+    feed._loaded = {0: a, 1: b}
+    feed.begin_round()
+    assert feed.current is a
+    assert feed.take() is a
+    feed.advance()
+    assert feed.index == 1
+
+    feed._next_listing = Listing(2, [Story("C", "summary", "link", "")], 3)
+    feed.begin_round()
+    assert feed.take() is b
+    feed.advance()
+    assert feed.page == 2 and feed.index == 0
+    assert feed.stories[0].title == "C"
+
+    # The last page of the archive has no Next link: it holds, never wraps.
+    end = NewsFeed()
+    end.stories = [a]
+    end._loaded = {0: a}
+    end.begin_round()
+    assert end.take() is a
+    end.advance()
+    assert end.index == 0 and end.stories[0] is a
 
 
 def check_stats() -> None:

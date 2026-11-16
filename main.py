@@ -53,6 +53,7 @@ from config import (
 )
 from deps import metal
 from game import Game
+from news import NewsFeed
 from selftest import selftest
 
 
@@ -99,6 +100,7 @@ def main() -> int:
     clock = pygame.time.Clock()
 
     game = Game()
+    news_feed = NewsFeed()
     music_player = MusicPlayer(enabled=not args.no_music,
                               volume=args.music_volume)
     if not args.no_music and not music_player.enabled:
@@ -107,6 +109,7 @@ def main() -> int:
     fire_was_down = False
     fullscreen = False
     running = True
+    story_assigned = False
     volume_hint: tuple[str, int] | None = None
 
     def toggle_fullscreen() -> None:
@@ -119,13 +122,16 @@ def main() -> int:
         pygame.mouse.set_visible(not fullscreen)
 
     # The title screen gets a track while the game is being set up; every
-    # new game and every new wave composes another one.
+    # new game and every new wave composes another one.  The first NASA
+    # story is fetched at the same time so the first game over is ready.
     music_player.request()
+    news_feed.begin_round()
     last_wave = game.wave
 
     while running:
         dt = clock.tick(FPS) / 1000.0
         music_player.update()
+        news_feed.update()
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -170,6 +176,8 @@ def main() -> int:
                     game.show_scores()
                 elif event.key == pygame.K_RETURN and game.state in ("title", "gameover"):
                     game.start()
+                    story_assigned = False
+                    news_feed.begin_round()
                     music_player.request(game.music_genre)
                     last_wave = game.wave
                 elif event.key == pygame.K_p:
@@ -205,6 +213,15 @@ def main() -> int:
             if game.wave != last_wave:
                 last_wave = game.wave
                 music_player.request(game.music_genre)
+
+        # The story was fetched during the run; pin it to this game over and
+        # start looking for the next one during the following game.
+        if game.state == "gameover" and not story_assigned:
+            story_assigned = True
+            story = news_feed.take()
+            game.story = story
+            if story is not None:
+                news_feed.advance()
 
         game.draw(game.canvas)
         now = pygame.time.get_ticks()
