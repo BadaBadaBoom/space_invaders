@@ -28,15 +28,87 @@ class MusicPlayer:
         self.want_genre: str | None = None
         self.genre: str | None = None
         self.current: pygame.mixer.Sound | None = None
+        # Guards ``pending`` so a track consumed from the prepared slot cannot
+        # be overwritten by a compose worker that was already in flight.
+        self.compose_generation = 0
         self.channels: list[pygame.mixer.Channel] = []
         self.active = 0
+        # One-slot prefetch.  ``prepare()`` renders the next wave's track on
+        # its own worker and parks it here, keyed by genre, until a matching
+        # ``request()`` claims it.  The generation counter lets a newer
+        # prepare supersede an older one by discarding stale results.
+        self.prepared: bytes | None = None
+        self.prepared_genre: str | None = None
+        self.prepare_thread: threading.Thread | None = None
+        self.prepare_generation = 0
         if self.enabled:
             pygame.mixer.set_num_channels(16)
             self.channels = [pygame.mixer.Channel(14), pygame.mixer.Channel(15)]
 
-    def request(self, genre: str | None = None) -> None:
-        """Compose a brand-new song; it fades in as soon as it is rendered."""
+    def prepare(self, genre: str) -> None:
+        """Render *genre* into the single prepared slot on a worker thread.
+
+        Never blocks the caller.  Each call bumps a generation counter; a
+        worker only publishes its track if it is still current when it
+        finishes, so a newer prepare supersedes (and discards) an older one.
+        """
         if not self.enabled:
+            return
+        with self.lock:
+            self.prepare_generation += 1
+            generation = self.prepare_generation
+        seed = random.randrange(1 << 30)
+        self.prepare_thread = threading.Thread(
+            target=self._prepare_compose, args=(seed, genre, generation),
+            daemon=True)
+        self.prepare_thread.start()
+
+    def _prepare_compose(self, seed: int, genre: str, generation: int) -> None:
+        try:
+            data: bytes | None = metal.compose(seed, genre=genre)
+        except Exception:  # noqa: BLE001 - a failed compose just goes silent
+            data = None
+        if not data:
+            return
+        with self.lock:
+            if generation != self.prepare_generation:
+                return  # superseded by a newer prepare, or already consumed
+            self.prepared = data
+            self.prepared_genre = genre
+
+    def _take_prepared(self, genre: str | None) -> bool:
+        """Move a matching prepared track into ``pending``; return success."""
+        if genre is None:
+            return False
+        with self.lock:
+            if self.prepared is None or self.prepared_genre != genre:
+                return False
+            data = self.prepared
+            # Consume and clear the slot, invalidate any stale prepare worker,
+            # and stop an in-flight compose worker from clobbering ``pending``.
+            self.prepared = None
+            self.prepared_genre = None
+            self.prepare_generation += 1
+            self.compose_generation += 1
+            self.pending = data
+        # Fulfilling a request supersedes any queued compose request.  These
+        # fields are only ever touched from the main thread.
+        self.want_new = False
+        self.want_genre = None
+        self.genre = genre
+        return True
+
+    def request(self, genre: str | None = None) -> None:
+        """Queue a brand-new song; it fades in as soon as it is rendered.
+
+        When a track for *genre* has already been prepared it is used
+        instantly - no new compose thread is started - and ``pending`` is
+        populated right away for ``update()`` to crossfade in.  Otherwise the
+        original compose behaviour applies.
+        """
+        if not self.enabled:
+            return
+        if self._take_prepared(genre):
             return
         if self.thread and self.thread.is_alive():
             self.want_new = True
@@ -54,16 +126,21 @@ class MusicPlayer:
             genre = random.choice(metal.GENRES)
         self.genre = genre
         seed = random.randrange(1 << 30)
-        self.thread = threading.Thread(target=self._compose, args=(seed, genre),
-                                       daemon=True)
+        self.compose_generation += 1
+        generation = self.compose_generation
+        self.thread = threading.Thread(
+            target=self._compose, args=(seed, genre, generation), daemon=True)
         self.thread.start()
 
-    def _compose(self, seed: int, genre: str | None) -> None:
+    def _compose(self, seed: int, genre: str | None,
+                 generation: int | None = None) -> None:
         try:
             data: bytes | None = metal.compose(seed, genre=genre)
         except Exception:  # noqa: BLE001 - a failed compose just goes silent
             data = None
         with self.lock:
+            if generation is not None and generation != self.compose_generation:
+                return  # superseded by a track taken from the prepared slot
             self.pending = data
 
     def update(self) -> None:
