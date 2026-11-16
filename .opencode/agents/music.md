@@ -12,6 +12,12 @@ permissions:
   - action: edit
     resource: "audio.py"
     effect: allow
+  - action: subagent
+    resource: "*"
+    effect: deny
+  - action: subagent
+    resource: "explore"
+    effect: allow
 ---
 
 # Music lane

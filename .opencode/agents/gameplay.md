@@ -12,6 +12,12 @@ permissions:
   - action: edit
     resource: "entities.py"
     effect: allow
+  - action: subagent
+    resource: "*"
+    effect: deny
+  - action: subagent
+    resource: "explore"
+    effect: allow
 ---
 
 # Gameplay lane

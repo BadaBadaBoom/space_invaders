@@ -9,6 +9,12 @@ permissions:
   - action: edit
     resource: "covers.py"
     effect: allow
+  - action: subagent
+    resource: "*"
+    effect: deny
+  - action: subagent
+    resource: "explore"
+    effect: allow
 ---
 
 # Covers lane

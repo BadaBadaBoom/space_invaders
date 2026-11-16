@@ -9,6 +9,12 @@ permissions:
   - action: edit
     resource: "render.py"
     effect: allow
+  - action: subagent
+    resource: "*"
+    effect: deny
+  - action: subagent
+    resource: "explore"
+    effect: allow
 ---
 
 # UI lane
