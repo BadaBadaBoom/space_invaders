@@ -18,7 +18,7 @@ from config import (
     ALIEN_H,
     ALIEN_W,
     COLS,
-    DRIFTER_POINTS,
+    DRIFTER_LIFE,
     DRIFTER_RESPAWN,
     DRIFTER_SPAWN_DELAY,
     DRIFTER_SPEED_MAX,
@@ -288,6 +288,10 @@ class Game(RenderMixin):
             self.drifter_timer = DRIFTER_RESPAWN
 
         for d in list(self.drifters):
+            d.age += dt
+            if d.age >= DRIFTER_LIFE:
+                self.expire_drifter(d)
+                continue
             size = d.size
             d.x += d.vx * dt
             d.y += d.vy * dt
@@ -353,7 +357,7 @@ class Game(RenderMixin):
             if rect.colliderect(b.sweep_rect()):
                 killed = True
                 self.shots_hit += 1
-                self.score += DRIFTER_POINTS
+                self.score += d.value
             else:
                 keep.append(b)
         self.player_bullets = keep
@@ -415,8 +419,9 @@ class Game(RenderMixin):
         d.y = clamp(d.y, FIELD_TOP, FLOOR_Y - d.size)
 
     def destroy_drifter(self, d: Drifter) -> None:
-        # A bullet kill pays DRIFTER_POINTS in check_drifter_collisions just
-        # before calling us, so this is the first chance to celebrate.
+        # The caller pays the points at d.value (the badge's age-based value)
+        # in check_drifter_collisions just before calling us, so this is the
+        # first chance to celebrate.
         self.maybe_celebrate_record()
         try:
             self.drifters.remove(d)
@@ -424,6 +429,27 @@ class Game(RenderMixin):
             pass
         self.avatars_killed += 1
         self.explode(d.x + d.size / 2, d.y + d.size / 2, d.palette)
+        self.drifter_timer = DRIFTER_RESPAWN
+
+    def expire_drifter(self, d: Drifter) -> None:
+        """A badge that lived its full life pops harmlessly, paying nothing."""
+        try:
+            self.drifters.remove(d)
+        except ValueError:
+            pass
+        self.play("clank")
+        x, y = d.x + d.size / 2, d.y + d.size / 2
+        for _ in range(10):
+            angle = self.rng.uniform(0.0, math.tau)
+            speed = self.rng.uniform(30.0, 130.0)
+            life = self.rng.uniform(0.2, 0.5)
+            colour = self.rng.choice(d.palette)
+            self.debris.append([x, y, math.cos(angle) * speed,
+                                math.sin(angle) * speed, life, life,
+                                colour, self.rng.choice((2, 3))])
+        self.rings.append([x, y, 6.0, 0.34, self.rng.choice(d.palette)])
+        self.flashes.append([x, y, 0.16, 0.16,
+                             self.rng.choice(d.palette), 16.0])
         self.drifter_timer = DRIFTER_RESPAWN
 
     def explode(self, x: float, y: float,

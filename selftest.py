@@ -15,7 +15,10 @@ from config import (
     ALIEN_H,
     ALIEN_W,
     AVATAR_SHEET,
+    DRIFTER_LIFE,
     DRIFTER_POINTS,
+    DRIFTER_POINTS_MIN,
+    DRIFTER_RESPAWN,
     DRIFTER_SIZE,
     DRIFTER_SPAWN_DELAY,
     DROP_DISTANCE,
@@ -194,6 +197,38 @@ def check_drifters(leaderboard: Leaderboard | None = None) -> None:
     game.update_drifters(1 / 60)
     assert not game.drifters and game.score == DRIFTER_POINTS
     assert game.debris and game.rings and game.flashes
+
+    # The younger the badge, the more a bullet kill pays.
+    assert Drifter(image, palette, 0, 0, 0, 0).value == DRIFTER_POINTS
+    aged = Drifter(image, palette, 0, 0, 0, 0)
+    aged.age = DRIFTER_LIFE / 2
+    assert aged.fade == 0.5
+    assert aged.value == round(
+        DRIFTER_POINTS_MIN + (DRIFTER_POINTS - DRIFTER_POINTS_MIN) * 0.5)
+    aged.age = DRIFTER_LIFE
+    assert aged.fade == 0.0 and aged.value == DRIFTER_POINTS_MIN
+
+    game = fresh()
+    game.score = 0
+    late = Drifter(image, palette, 400, 300, 0, 0)
+    late.age = DRIFTER_LIFE * 0.9
+    game.drifters = [late]
+    game.player_bullets.append(Bullet(410, 310, -PLAYER_BULLET_SPEED, True))
+    game.update_drifters(1 / 60)
+    assert not game.drifters
+    assert DRIFTER_POINTS_MIN <= game.score < DRIFTER_POINTS
+
+    # At the end of its life it pops harmlessly: no score, no kill credit.
+    game = fresh()
+    old = Drifter(image, palette, 400, 300, 0, 0)
+    old.age = DRIFTER_LIFE - 0.01
+    game.drifters = [old]
+    debris_before = len(game.debris)
+    game.update_drifters(0.02)
+    assert not game.drifters, "expired badge stayed in the arena"
+    assert game.score == 0 and game.avatars_killed == 0
+    assert len(game.debris) > debris_before and game.rings and game.flashes
+    assert game.drifter_timer == DRIFTER_RESPAWN
 
     # Enemy fire is swallowed but does NOT pop the badge.
     game = fresh()
@@ -655,4 +690,9 @@ def check_scaling(game: Game) -> None:
         game.draw(game.canvas)
         game.present(screen)
         assert screen.get_size() == size
+    # Clicking the NASA link must map back through the same letterboxing.
+    assert game.canvas_point((WIDTH, HEIGHT), (123, 45)) == (123, 45)
+    assert game.canvas_point((1600, 1200), (800, 600)) == (400.0, 300.0)
+    assert game.canvas_point((1000, 600), (500, 300)) == (400.0, 300.0)
+    assert game.canvas_point((1000, 800), (500, 400)) == (400.0, 300.0)
     pygame.display.set_mode((WIDTH, HEIGHT))
