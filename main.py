@@ -21,6 +21,8 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import webbrowser
+from contextlib import suppress
 from pathlib import Path
 
 try:
@@ -146,6 +148,18 @@ def main() -> int:
                 size = (max(event.w, 320), max(event.h, 240))
                 if size != screen.get_size():
                     screen = pygame.display.set_mode(size, pygame.RESIZABLE)
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                story = getattr(game, "story", None)
+                rect = getattr(game, "story_link_rect", None)
+                if game.state == "gameover" and story is not None and rect:
+                    point = event.pos
+                    mapper = getattr(game, "canvas_point", None)
+                    if mapper is not None:
+                        point = mapper(screen.get_size(), event.pos)
+                    if rect.collidepoint(point):
+                        # A missing browser must never take the game down.
+                        with suppress(Exception):
+                            webbrowser.open(story.link)
             elif event.type == pygame.KEYDOWN:
                 if game.state == "scores":
                     if event.key in (pygame.K_ESCAPE, pygame.K_l,
