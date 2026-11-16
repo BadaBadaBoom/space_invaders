@@ -6,7 +6,8 @@ Controls
     Space                     fire
     P                         pause
     M                         mute music
-    - / =                     music volume down / up
+    Up / Down                 music volume up / down
+    keypad +                  next song
     L                         high-score leaderboard
     F11  /  Alt+Enter         fullscreen (the view scales to any size)
     Enter                     start / restart (composes a new song)
@@ -166,15 +167,17 @@ def main() -> int:
                     last_wave = game.wave
                 elif event.key == pygame.K_p:
                     game.toggle_pause()
-                elif event.key in (pygame.K_EQUALS, pygame.K_PLUS,
-                                   pygame.K_KP_PLUS):
+                elif event.key == pygame.K_UP:
                     level = music_player.change_volume(VOLUME_STEP)
                     volume_hint = (f"MUSIC {round(level * 100)}%",
                                    pygame.time.get_ticks() + 1400)
-                elif event.key in (pygame.K_MINUS, pygame.K_UNDERSCORE,
-                                   pygame.K_KP_MINUS):
+                elif event.key == pygame.K_DOWN:
                     level = music_player.change_volume(-VOLUME_STEP)
                     volume_hint = (f"MUSIC {round(level * 100)}%",
+                                   pygame.time.get_ticks() + 1400)
+                elif event.key == pygame.K_KP_PLUS:
+                    music_player.next_track()
+                    volume_hint = ("NEXT SONG",
                                    pygame.time.get_ticks() + 1400)
                 elif event.key == pygame.K_m:
                     if music_player.toggle_mute():
