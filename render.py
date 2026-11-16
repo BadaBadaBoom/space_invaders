@@ -375,16 +375,18 @@ class RenderMixin:
         surface.blit(caption, (WIDTH // 2 - caption.get_width() // 2, 84))
 
         columns = (
-            ("RANK", 90),
-            ("SCORE", 210),
-            ("WAVE", 280),
-            ("AVATARS", 390),
-            ("BUNKER", 530),
-            ("ACCURACY", 690),
+            ("RANK", 80),
+            ("SCORE", 310),
+            ("WAVE", 390),
+            ("AVATARS", 480),
+            ("BUNKER", 610),
+            ("ACCURACY", 740),
         )
         for label, right in columns:
             text = self.font_tiny.render(label, True, (255, 220, 120))
             surface.blit(text, (right - text.get_width(), 112))
+        name_head = self.font_tiny.render("NAME", True, (255, 220, 120))
+        surface.blit(name_head, (96, 112))
         pygame.draw.line(surface, (90, 96, 140), (44, 132), (756, 132), 1)
 
         entries = self.leaderboard.entries
@@ -409,13 +411,16 @@ class RenderMixin:
                 colour = rank_colors.get(rank, UI_COLOR)
                 if highlighted:
                     colour = (255, 230, 140)
+                name = str(entry.get("name") or "???")
+                name_text = self.font_small.render(name, True, colour)
+                surface.blit(name_text, (96, y))
                 values = (
-                    (f"{rank}", 90),
-                    (f"{int(entry['score'])}", 210),
-                    (f"{int(entry['wave'])}", 280),
-                    (f"{int(entry['avatars'])}", 390),
-                    (f"{entry['bunker']:.1f}%", 530),
-                    (f"{entry['accuracy']:.1f}%", 690),
+                    (f"{rank}", 80),
+                    (f"{int(entry['score'])}", 310),
+                    (f"{int(entry['wave'])}", 390),
+                    (f"{int(entry['avatars'])}", 480),
+                    (f"{entry['bunker']:.1f}%", 610),
+                    (f"{entry['accuracy']:.1f}%", 740),
                 )
                 for value, right in values:
                     text = self.font_small.render(value, True, colour)
@@ -426,8 +431,18 @@ class RenderMixin:
                 f"SHOWING {start + 1}-{end} OF {len(entries)}", True, UI_DIM)
             surface.blit(footer, (WIDTH // 2 - footer.get_width() // 2, 540))
 
-        hint = self.font_tiny.render(
-            "UP / DOWN  SCROLL      L / ESC  BACK", True, UI_DIM)
+        armed = (self.clear_armed
+                 and pygame.time.get_ticks() < self.clear_hint_until)
+        if armed:
+            hint = self.font_tiny.render(
+                f"ERASE ALL {len(entries)} SCORES?  PRESS DELETE AGAIN",
+                True, (255, 120, 140))
+        elif entries:
+            hint = self.font_tiny.render(
+                "UP / DOWN  SCROLL      L / ESC  BACK      DELETE  ERASE ALL",
+                True, UI_DIM)
+        else:
+            hint = self.font_tiny.render("L / ESC  BACK", True, UI_DIM)
         surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 566))
 
     def draw_overlay(self, surface: pygame.Surface) -> None:

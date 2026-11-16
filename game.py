@@ -92,6 +92,9 @@ class Game(RenderMixin):
         self.leaderboard = leaderboard if leaderboard is not None else Leaderboard()
         self.score_return_state = "title"
         self.score_scroll = 0
+        # Two-step guard for erasing the board from the scores screen.
+        self.clear_armed = False
+        self.clear_hint_until = 0
         self.genre_bag: list[str] = []
         self.music_genre: str | None = None
         self.pulp_bg: pygame.Surface | None = None
@@ -674,11 +677,27 @@ class Game(RenderMixin):
         if self.state in ("title", "paused", "playing", "gameover"):
             self.score_return_state = self.state
             self.score_scroll = 0
+            self.clear_armed = False
             self.state = "scores"
 
     def close_scores(self) -> None:
         if self.state == "scores":
+            self.clear_armed = False
             self.state = self.score_return_state
+
+    def clear_scores(self) -> bool:
+        """Erase the whole board. The first call arms, the second commits."""
+        now = pygame.time.get_ticks()
+        if self.clear_armed and now < self.clear_hint_until:
+            self.clear_armed = False
+            self.clear_hint_until = 0
+            self.leaderboard.clear()
+            self.last_rank = None
+            self.score_scroll = 0
+            return True
+        self.clear_armed = True
+        self.clear_hint_until = now + 4000
+        return False
 
     def scroll_scores(self, delta: int) -> None:
         if self.state != "scores":

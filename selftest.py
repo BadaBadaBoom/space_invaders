@@ -65,6 +65,7 @@ def selftest(seconds: float) -> int:
     check_drifters(scores)
     check_feedback()
     check_leaderboard()
+    check_clear_scores()
     check_record_celebration()
     check_news()
     check_stats()
@@ -389,6 +390,12 @@ def check_leaderboard() -> None:
             f"kept {len(board.entries)} entries, expected {LEADERBOARD_SIZE}")
         assert board.entries == sorted(board.entries, key=_score_order), (
             "leaderboard is not sorted")
+        for entry in board.entries:
+            name = entry["name"]
+            assert (isinstance(name, str) and name and name.isupper()
+                    and " " not in name and len(name) <= 12), f"bad name {name!r}"
+        assert len({entry["name"] for entry in board.entries}) == LEADERBOARD_SIZE, (
+            "handles should be unique while the name pool lasts")
         assert Leaderboard(path).entries == board.entries, (
             "leaderboard did not survive a reload")
 
@@ -419,7 +426,50 @@ def check_leaderboard() -> None:
              "bunker": 12.5, "accuracy": 33.3},
         ]), encoding="utf-8")
         loaded = Leaderboard(path).entries
-        assert len(loaded) == 1 and loaded[0]["wave"] == 4
+        # Bad rows drop out, a stored handle is sanitised, and an old
+        # nameless row is given one that is written back for next time.
+        assert len(loaded) == 2, f"loaded {len(loaded)} rows"
+        assert loaded[0]["score"] == 99999
+        assert loaded[0]["name"] == "RUNNER12345"
+        assert loaded[1]["name"] and " " not in str(loaded[1]["name"])
+        assert Leaderboard(path).entries == loaded, (
+            "generated handle did not persist")
+
+        # Erasing the board empties it in memory and on disk.
+        assert board.clear() == LEADERBOARD_SIZE
+        assert board.entries == [] and board.best == 0
+        assert Leaderboard(path).entries == []
+        assert board.clear() == 0, "clearing an empty board should be a no-op"
+
+
+def check_clear_scores() -> None:
+    """Delete arms the erase, a second press commits, a timeout cancels."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="space_invaders_clear_") as tmp:
+        board = Leaderboard(Path(tmp) / "board.json")
+        board.add({"score": 10, "wave": 1, "avatars": 0,
+                   "bunker": 0.0, "accuracy": 0.0})
+        game = Game(seed=2, leaderboard=board)
+        game.show_scores()
+
+        assert not game.clear_scores(), "first press must only arm"
+        assert game.clear_armed and len(board.entries) == 1
+        assert game.clear_scores(), "second press did not erase"
+        assert not game.clear_armed and board.entries == []
+        assert Leaderboard(board.path).entries == [], "erase was not persisted"
+
+        # Past the confirmation window the next press only re-arms.
+        board.add({"score": 5, "wave": 1, "avatars": 0,
+                   "bunker": 0.0, "accuracy": 0.0})
+        game.clear_scores()
+        game.clear_hint_until = pygame.time.get_ticks() - 1
+        assert not game.clear_scores(), "expired confirmation still erased"
+        assert len(board.entries) == 1
+
+        # Leaving the screen cancels a pending erase.
+        game.close_scores()
+        assert not game.clear_armed
 
 
 def check_record_celebration() -> None:
@@ -644,6 +694,7 @@ def check_stats() -> None:
         game.record_score()
         assert len(board.entries) == 1
         saved = board.entries[0]
+        assert saved["name"] and " " not in str(saved["name"])
         assert saved["avatars"] == game.avatars_killed
         assert saved["accuracy"] == game.run_stats()["accuracy"]
         assert saved["bunker"] == game.run_stats()["bunker"]

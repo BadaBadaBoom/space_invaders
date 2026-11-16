@@ -107,6 +107,7 @@ and painted backdrops, but no soundtrack.
 | `Space` | Fire (max 3 shots on screen) |
 | `P` | Pause / resume |
 | `L` | High-score leaderboard (up/down to scroll) |
+| `Delete` | On the leaderboard: erase every saved score (press twice) |
 | `M` | Mute / unmute music |
 | `↑` / `↓` | Music volume up / down (10% steps) |
 | numpad `+` | Next song (new genre and composition) |
@@ -306,7 +307,7 @@ size, and `off` or 0% intensity skips it entirely.
   every score award floats up as a fading number, and a live 8×4 fleet map in
   the HUD dims as the ranks thin out
 - **A persistent top-100 leaderboard** (see below) recording score, wave,
-  avatars killed and your shooting statistics
+  avatars killed and your shooting statistics under a random silly handle
 - **A NASA story on every game-over screen** (see below): picture, headline and
   summary, fetched in the background while you play
 
@@ -319,6 +320,11 @@ written to:
 ~/.local/share/space_invaders/leaderboard.json
 ```
 
+Each run is stamped with a random one-word handle from a pool of silly names
+(`BONK`, `PICKLE`, `MOTHMAN`, `TURNIP`, …). The handle is chosen when the run
+is saved and stored with it, so it survives restarts; a board written before
+handles existed gets named on first load and saved back.
+
 (Override with `SPACE_INVADERS_SCORES=/path/to/file.json`.) The file is loaded
 at startup and saved atomically, so scores survive restarts. Corrupt or
 partial files are ignored rather than crashing the game.
@@ -327,6 +333,8 @@ Each entry stores:
 
 | Column | Meaning |
 | --- | --- |
+| `RANK` | Board position, 1 = best |
+| `NAME` | The run's random handle |
 | `SCORE` | Final score |
 | `WAVE` | Wave reached |
 | `AVATARS` | Floating avatar badges destroyed |
@@ -342,6 +350,9 @@ Press `L` from the title, pause, game-over or gameplay to open the table; use
 `Up`/`Down` (or `PageUp`/`PageDown`) to scroll through all 100 places and
 `L`/`Esc` to go back. Your latest run is highlighted in the table, and the
 game-over screen shows the run's numbers plus its new rank.
+
+To wipe the board, press `Delete` on that screen and then `Delete` again within
+four seconds to confirm. Any other key cancels, so a stray press costs nothing.
 
 During play the record is shown live as `BEST` above your running score, and it
 follows you once you pass it. The moment a run beats the board's best, half the

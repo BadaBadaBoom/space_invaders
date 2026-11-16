@@ -199,6 +199,11 @@ def main() -> int:
                         game.scroll_scores(-LEADERBOARD_SIZE)
                     elif event.key == pygame.K_END:
                         game.scroll_scores(LEADERBOARD_SIZE)
+                    elif event.key == pygame.K_DELETE:
+                        game.clear_scores()
+                    else:
+                        # Any other key cancels a pending erase.
+                        game.clear_armed = False
                     continue
                 if event.key == pygame.K_ESCAPE:
                     if fullscreen:
