@@ -20,6 +20,10 @@ from config import (
     BOSS_W,
     BOSS_Y,
     COLS,
+    DASH_COOLDOWN,
+    DASH_SPEED,
+    DASH_TAP_WINDOW,
+    DASH_TIME,
     DRIFTER_LIFE,
     DRIFTER_POINTS,
     DRIFTER_POINTS_MIN,
@@ -83,6 +87,7 @@ def selftest(seconds: float) -> int:
     check_ufo()
     check_powerups()
     check_boss()
+    check_dash()
     check_feedback()
     check_leaderboard()
     check_clear_scores()
@@ -516,6 +521,48 @@ def check_boss() -> None:
     assert game.wave == 6, "wave did not advance after the boss died"
     assert game.boss is None and game.alive_aliens()
     assert game.powerups, "the reward capsule died with the wave change"
+
+
+def check_dash() -> None:
+    """A double-tap bursts the ship, clamps at the walls and cools down."""
+    game = Game(seed=61)
+    game.start()
+    player = game.player
+    assert player.dash_cooldown == 0.0
+
+    assert not game.tap(1, 100.0), "a single tap dashed"
+    assert game.tap(1, 100.0 + DASH_TAP_WINDOW / 2), "double tap did not dash"
+    assert player.dash_time > 0 and player.dash_cooldown > 0
+    assert player.dash_dir == 1
+
+    # The burst wins over held movement.
+    start_x = player.x
+    game.update_player(1 / 60, -1, False)
+    assert player.x > start_x + DASH_SPEED / 120, "dash did not move the ship"
+
+    # It clamps at the wall instead of overshooting.
+    player.x = RIGHT_WALL - PLAYER_W - 2
+    player.dash_time = DASH_TIME
+    player.dash_dir = 1
+    game.update_player(0.5, 0, False)
+    assert player.x == RIGHT_WALL - PLAYER_W
+
+    # Cooling down blocks another burst; it comes back afterwards.
+    player.dash_cooldown = DASH_COOLDOWN
+    assert not game.dash(-1), "dashed while cooling down"
+    player.dash_cooldown = 0.0
+    assert game.dash(-1), "dash never came back"
+
+    # Taps further apart than the window are not a double-tap.
+    player.dash_cooldown = 0.0
+    player.dash_time = 0.0
+    assert not game.tap(-1, 200.0)
+    assert not game.tap(-1, 200.0 + DASH_TAP_WINDOW + 0.01)
+
+    # And it is only available during active play.
+    game.state = "paused"
+    assert not game.dash(1)
+    game.state = "playing"
 
 
 def check_feedback() -> None:

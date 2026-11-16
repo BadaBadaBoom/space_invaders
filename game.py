@@ -33,6 +33,10 @@ from config import (
     BOSS_W,
     BOSS_Y,
     COLS,
+    DASH_COOLDOWN,
+    DASH_SPEED,
+    DASH_TAP_WINDOW,
+    DASH_TIME,
     DRIFTER_LIFE,
     DRIFTER_RESPAWN,
     DRIFTER_SPAWN_DELAY,
@@ -52,6 +56,7 @@ from config import (
     MAX_PLAYER_BULLETS,
     PLAYER_BULLET_SPEED,
     PLAYER_FIRE_COOLDOWN,
+    PLAYER_H,
     PLAYER_SPEED,
     PLAYER_W,
     POPUP_LIFE,
@@ -117,6 +122,7 @@ class Game(RenderMixin):
             "clank": make_tone(330, 45, 0.10),
             "blast": make_tone(82, 320, 0.22),
             "power": make_tone(1046, 120, 0.14),
+            "dash": make_tone(520, 55, 0.10),
         }
         # Pre-render the beat-the-record boom once per Game instance, never
         # on the victory frame. Without numpy (metal is None), without the
@@ -176,6 +182,8 @@ class Game(RenderMixin):
         self.ufo_timer = self.rng.uniform(*UFO_FIRST_DELAY)
         # Capsules falling toward the ship.
         self.powerups: list[PowerUp] = []
+        # Last tap per direction, for the double-tap dash.
+        self.last_tap: dict[int, float] = {}
         # NASA story card for the game-over screen (set by main).
         self.story = None
         # Snapshot the board's best so this run can celebrate beating it once.
@@ -306,8 +314,14 @@ class Game(RenderMixin):
         p.cooldown = max(0.0, p.cooldown - dt)
         p.rapid = max(0.0, p.rapid - dt)
         p.triple = max(0.0, p.triple - dt)
+        p.dash_cooldown = max(0.0, p.dash_cooldown - dt)
 
-        if move:
+        if p.dash_time > 0:
+            # The burst overrides held movement for its short duration.
+            p.dash_time = max(0.0, p.dash_time - dt)
+            p.x = clamp(p.x + p.dash_dir * DASH_SPEED * dt, LEFT_WALL,
+                        RIGHT_WALL - PLAYER_W)
+        elif move:
             p.x = clamp(p.x + move * PLAYER_SPEED * dt, LEFT_WALL,
                         RIGHT_WALL - PLAYER_W)
 
@@ -323,6 +337,28 @@ class Game(RenderMixin):
                 ))
             self.shots_fired += len(spread)
             self.play("shoot")
+
+    def dash(self, direction: int) -> bool:
+        """Start a burst; False while cooling down or outside active play."""
+        player = self.player
+        if (self.state != "playing" or direction == 0
+                or player.dash_cooldown > 0 or player.dash_time > 0):
+            return False
+        player.dash_time = DASH_TIME
+        player.dash_cooldown = DASH_COOLDOWN
+        player.dash_dir = direction
+        self.spawn_sparks(player.x + PLAYER_W / 2, player.y + PLAYER_H / 2)
+        self.play("dash")
+        return True
+
+    def tap(self, direction: int, now: float | None = None) -> bool:
+        """Note a fresh tap; the second one inside the window starts a dash."""
+        stamp = (pygame.time.get_ticks() / 1000.0 if now is None else now)
+        previous = self.last_tap.get(direction, -1e9)
+        self.last_tap[direction] = stamp
+        if stamp - previous <= DASH_TAP_WINDOW:
+            return self.dash(direction)
+        return False
 
     def update_bullets(self, dt: float) -> None:
         for b in self.player_bullets + self.alien_bullets:
@@ -895,6 +931,7 @@ class Game(RenderMixin):
         self.alien_bullets.clear()
         self.player_bullets.clear()
         self.player.x = WIDTH / 2 - PLAYER_W / 2
+        self.player.dash_time = 0.0
         self.player.invulnerable = 1.6
         if self.lives <= 0:
             self.game_over()

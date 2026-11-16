@@ -237,6 +237,10 @@ def main() -> int:
                     last_wave = game.wave
                 elif event.key == pygame.K_p:
                     game.toggle_pause()
+                elif event.key in (pygame.K_LEFT, pygame.K_a):
+                    game.tap(-1)
+                elif event.key in (pygame.K_RIGHT, pygame.K_d):
+                    game.tap(1)
                 elif event.key == pygame.K_UP:
                     level = music_player.change_volume(VOLUME_STEP)
                     volume_hint = (f"MUSIC {round(level * 100)}%",

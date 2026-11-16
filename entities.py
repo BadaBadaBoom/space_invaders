@@ -88,6 +88,9 @@ class Player:
     invulnerable: float = 0.0
     rapid: float = 0.0       # seconds of rapid fire left
     triple: float = 0.0      # seconds of triple shot left
+    dash_time: float = 0.0   # seconds left in the current dash burst
+    dash_cooldown: float = 0.0
+    dash_dir: int = 0
 
     def rect(self) -> pygame.Rect:
         return pygame.Rect(int(self.x), int(self.y), PLAYER_W, PLAYER_H)

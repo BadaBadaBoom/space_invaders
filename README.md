@@ -105,6 +105,7 @@ and painted backdrops, but no soundtrack.
 | Key | Action |
 | --- | --- |
 | `←` / `→` or `A` / `D` | Move |
+| double-tap `←` / `→` | Dash: 126 px burst, 1.2 s cooldown |
 | `Space` | Fire (max 3 shots on screen) |
 | `P` | Pause / resume |
 | `L` | High-score leaderboard (up/down to scroll) |
@@ -117,6 +118,10 @@ and painted backdrops, but no soundtrack.
 | `F11` or `Alt+Enter` | Fullscreen on/off |
 | `Enter` | Start / restart (composes a new song) |
 | `Esc` | Leave fullscreen, or quit |
+
+The dash ignores held movement for its 0.14 s burst, so it works as an
+escape even while you are pressing the other way. A pair of chevrons beside
+the fleet map goes bright when it is ready and dims while it recharges.
 
 ## The soundtrack
 
@@ -355,6 +360,8 @@ size, and `off` or 0% intensity skips it entirely.
 - **A boss every fifth wave**: a wide machine with a segmented HP bar, three
   fire patterns and no formation march
 - 3 lives, brief invulnerability (the ship flashes) after a hit
+- **A dash**: double-tap a direction for a 126 px burst that overrides held
+  movement, on a 1.2 s cooldown — the answer to a badge drifting into your lane
 - Endless waves: each cleared wave pays a bonus and starts faster
 - Game over when you run out of lives **or** the formation reaches the landing line
 - Title, pause, and game-over screens; starfield plus a fresh 1960s cover
@@ -451,6 +458,7 @@ the mystery UFO (spawn timing, crossing, payout and bullet-only kills),
 power-up capsules (drop rate, falling, pickup, both timed boosts and repair),
 boss waves (spawning, scaling, sway bounds, all three volleys, damage, the
 kill payout and the victory pause),
+the dash (double-tap window, burst over held input, wall clamp, cooldown),
 that each wave paints a different backdrop and rotates through every music
 genre without repeats, that the leaderboard keeps 100 sorted entries, reloads
 correctly and records each run once, that shooting statistics follow the
@@ -481,6 +489,9 @@ Power-up capsules use `POWERUP_DROP_CHANCE`, `POWERUP_FALL_SPEED`,
 The boss is tuned by `BOSS_EVERY`, `BOSS_HP_BASE`/`STEP`,
 `BOSS_SCORE_BASE`/`STEP`, `BOSS_SWAY`/`SWAY_SPEED`, `BOSS_FIRE_MIN`/`MAX` and
 `BOSS_VOLLEY_SPEED`.
+
+The dash uses `DASH_TAP_WINDOW` (double-tap window), `DASH_SPEED`, `DASH_TIME`
+and `DASH_COOLDOWN`.
 
 The leaderboard size is `LEADERBOARD_SIZE` (100) and its path is
 `SCORES_FILE` at the top of `main.py`.

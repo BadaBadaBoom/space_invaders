@@ -421,15 +421,24 @@ class RenderMixin:
             surface.blit(label, (rect.centerx - label.get_width() // 2,
                                  rect.centery - label.get_height() // 2))
 
+    def draw_ship(self, surface: pygame.Surface, x: int, y: int,
+                  colour: tuple[int, int, int]) -> None:
+        pygame.draw.rect(surface, colour, (x + 16, y, 14, 6), border_radius=2)
+        pygame.draw.rect(surface, colour, (x + 4, y + 6, PLAYER_W - 8, 6))
+        pygame.draw.rect(surface, colour, (x, y + 12, PLAYER_W, 6),
+                         border_radius=3)
+        pygame.draw.rect(surface, (10, 30, 22), (x + 20, y + 2, 6, 4))
+
     def draw_player(self, surface: pygame.Surface) -> None:
         p = self.player
         if p.invulnerable > 0 and int(p.invulnerable * 12) % 2 == 0:
             return
         x, y = int(p.x), int(p.y)
-        pygame.draw.rect(surface, PLAYER_COLOR, (x + 16, y, 14, 6), border_radius=2)
-        pygame.draw.rect(surface, PLAYER_COLOR, (x + 4, y + 6, PLAYER_W - 8, 6))
-        pygame.draw.rect(surface, PLAYER_COLOR, (x, y + 12, PLAYER_W, 6), border_radius=3)
-        pygame.draw.rect(surface, (10, 30, 22), (x + 20, y + 2, 6, 4))
+        if p.dash_time > 0 and p.dash_dir:
+            # Warp trail behind the burst.
+            for step, ghost in ((1, (86, 170, 124)), (2, (44, 92, 68))):
+                self.draw_ship(surface, x - p.dash_dir * step * 18, y, ghost)
+        self.draw_ship(surface, x, y, PLAYER_COLOR)
 
     def draw_debris(self, surface: pygame.Surface) -> None:
         for flash in self.flashes:
@@ -487,6 +496,14 @@ class RenderMixin:
             colour = (ROW_COLORS[a.row % len(ROW_COLORS)] if a.alive
                       else (40, 44, 68))
             pygame.draw.rect(surface, colour, (x, y, cell, 3))
+
+        # Dash readiness: a pair of chevrons beside the fleet map.
+        ready = self.player.dash_cooldown <= 0 and self.player.dash_time <= 0
+        shade = PLAYER_COLOR if ready else (58, 66, 96)
+        for i in range(2):
+            x0 = 92 + i * 9
+            pygame.draw.polygon(surface, shade,
+                                ((x0, 47), (x0 + 6, 53), (x0, 59)))
 
         # lives as tiny ships, right-aligned
         for i in range(max(0, self.lives)):

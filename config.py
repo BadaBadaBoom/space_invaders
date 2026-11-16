@@ -39,6 +39,12 @@ ALIEN_BULLET_SPEED = 250.0
 PLAYER_FIRE_COOLDOWN = 0.22
 MAX_PLAYER_BULLETS = 3
 
+# Dash: double-tap a direction for a short burst that ignores held movement.
+DASH_TAP_WINDOW = 0.28       # seconds between taps that counts as a double-tap
+DASH_SPEED = 900.0           # px/s during the burst
+DASH_TIME = 0.14             # seconds of burst (900 x 0.14 = 126 px)
+DASH_COOLDOWN = 1.2
+
 # Screen shake: peak displacement in canvas pixels per trigger.  Overlapping
 # shakes add together, up to SHAKE_MAX, and fade with SHAKE_DECAY (seconds).
 SHAKE_DRIFTER = 6.0          # you shot a floating avatar
