@@ -388,15 +388,16 @@ class RenderMixin:
                                 box.centery - nasa.get_height() // 2))
         pygame.draw.rect(surface, (60, 70, 110), box, width=1)
 
-        for i, text in enumerate(wrap_text(
-                self.font_small, story.title, 368, 3)):
+        heading_lines = wrap_text(self.font_small, story.title, 368, 3)
+        for i, text in enumerate(heading_lines):
             label = self.font_small.render(text, True, (255, 225, 140))
             surface.blit(label, (384, 234 + i * 22))
 
+        summary_y = 234 + len(heading_lines) * 22 + 16
         for i, text in enumerate(wrap_text(
                 self.font_tiny, story.summary, 368, 10)):
             label = self.font_tiny.render(text, True, UI_COLOR)
-            surface.blit(label, (384, 308 + i * 17))
+            surface.blit(label, (384, summary_y + i * 17))
 
         hint = self.font_small.render(
             "press ENTER to play again", True, (255, 220, 120))
