@@ -4,7 +4,7 @@ from __future__ import annotations
 
 try:
     import music as metal
-except Exception:  # numpy missing, or another synth problem
+except Exception:  # noqa: BLE001 - numpy missing, or another synth problem
     metal = None
 
 try:

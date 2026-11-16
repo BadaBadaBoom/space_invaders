@@ -54,7 +54,7 @@ class MusicPlayer:
     def _compose(self, seed: int, genre: str | None) -> None:
         try:
             data: bytes | None = metal.compose(seed, genre=genre)
-        except Exception:
+        except Exception:  # noqa: BLE001 - a failed compose just goes silent
             data = None
         with self.lock:
             self.pending = data
@@ -70,7 +70,7 @@ class MusicPlayer:
             return
         try:
             sound = pygame.mixer.Sound(buffer=data)
-        except Exception:
+        except Exception:  # noqa: BLE001 - keep the old track playing
             return
         new_volume = 0.0 if self.muted else self.volume
         old = self.channels[self.active]

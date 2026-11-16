@@ -17,7 +17,7 @@ def load_font(size: int, bold: bool = False) -> pygame.font.Font:
     """Prefer a monospace system font, fall back to pygame's built-in font."""
     try:
         return pygame.font.SysFont("dejavusansmono,monospace", size, bold=bold)
-    except Exception:
+    except Exception:  # noqa: BLE001 - any font backend failure falls back
         return pygame.font.Font(None, size)
 
 
@@ -45,7 +45,7 @@ def _palette_from_tile(tile: pygame.Surface, limit: int = 6) -> list[tuple[int, 
     try:
         rgb = pygame.surfarray.pixels3d(tile).astype(np.int16).reshape(-1, 3)
         alpha = pygame.surfarray.array_alpha(tile).reshape(-1)
-    except Exception:
+    except Exception:  # noqa: BLE001 - odd pixel formats use the fallback
         return fallback
     vivid = rgb[alpha > 180]
     if len(vivid) == 0:
@@ -169,5 +169,5 @@ def make_tone(frequency: float, duration_ms: int, volume: float = 0.18,
             for _ in range(channels):
                 buf.append(value)
         return pygame.mixer.Sound(buffer=buf.tobytes())
-    except Exception:
+    except Exception:  # noqa: BLE001 - no mixer means no blip
         return None
