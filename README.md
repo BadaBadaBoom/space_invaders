@@ -111,6 +111,7 @@ and painted backdrops, but no soundtrack.
 | `↑` / `↓` | Music volume up / down (10% steps) |
 | keypad `+` | Next song (new composition, same genre) |
 | `F3` | CRT filter: off / low / medium / high |
+| `[` / `]` | CRT intensity down / up (10% steps) |
 | `F11` or `Alt+Enter` | Fullscreen on/off |
 | `Enter` | Start / restart (composes a new song) |
 | `Esc` | Leave fullscreen, or quit |
@@ -258,6 +259,8 @@ grows together on a big display.
 
 - `F11` or `Alt+Enter` toggles fullscreen at the desktop resolution.
 - The window is resizable; drag it and the view scales with it.
+- The mouse pointer is shown outside active play, so game-over story links can
+  be clicked in fullscreen.
 
 ## CRT filter
 
@@ -265,9 +268,11 @@ Every frame gets a pure-pygame CRT pass before it is scaled to the window:
 scanlines, an RGB aperture grille and a vignette, plus a soft bloom and a slow
 rolling refresh band on the default `medium` preset; `high` adds grain and
 short phosphor trails. Press `F3` to cycle `off -> low -> medium -> high`, with
-a brief on-screen hint. The default is `CRT_DEFAULT = "medium"` in `config.py`.
-The pass runs on the 800×600 canvas, so its cost stays fixed regardless of
-window size, and `off` skips it entirely.
+a brief on-screen hint. `[` and `]` scale the active preset's strength from 0%
+to 100% in 10% steps. The defaults are `CRT_DEFAULT = "medium"` and
+`CRT_INTENSITY = 1.0` in `config.py`; the runtime choice is not persisted. The
+pass runs on the 800×600 canvas, so its cost stays fixed regardless of window
+size, and `off` or 0% intensity skips it entirely.
 
 ## What's in it
 
@@ -373,6 +378,9 @@ seed, and distinct across genres. Useful in CI without a display.
 The game constants at the top of `main.py` are the knobs: window size, formation
 size/spacing, marching speed, bullet speeds, fire cooldown, colors, lives,
 number of bunkers, and bunker grid/cell size (`SHIELD_*`).
+
+The CRT defaults are in `config.py`: `CRT_DEFAULT` (`"off"`, `"low"`,
+`"medium"` or `"high"`) and `CRT_INTENSITY` (0.0–1.0).
 
 The hazards are tuned by `DRIFTER_SIZE`, `DRIFTER_SPEED_MIN`/`MAX`,
 `DRIFTER_SPAWN_DELAY`, `DRIFTER_RESPAWN`, `DRIFTER_LIFE`,

@@ -652,7 +652,7 @@ def check_music() -> None:
 
 
 def check_crt() -> None:
-    """The CRT pass is deterministic, sized, and a true no-op when off."""
+    """The CRT pass is deterministic, sized, and a true no-op when off/0%."""
     from crt import PRESETS, CrtOverlay
 
     assert tuple(PRESETS) == ("off", "low", "medium", "high")
@@ -663,12 +663,14 @@ def check_crt() -> None:
     else:
         raise AssertionError("unknown CRT preset was accepted")
 
-    def frame(preset: str, passes: int = 1) -> tuple:
+    def frame(preset: str, intensity: float = 1.0,
+              passes: int = 1) -> tuple:
         surface = pygame.Surface((160, 120))
         surface.fill((40, 70, 110))
         for x in range(0, 160, 7):
             pygame.draw.line(surface, (220, 90, 40), (x, 0), (x, 119))
-        overlay = CrtOverlay((160, 120), preset=preset, seed=5)
+        overlay = CrtOverlay((160, 120), preset=preset,
+                             intensity=intensity, seed=5)
         for step in range(passes):
             overlay.apply_inplace(surface, t=1.25 + step * 0.1)
         return surface.get_size(), pygame.image.tobytes(surface, "RGB")
@@ -677,6 +679,16 @@ def check_crt() -> None:
     medium = frame("medium")
     assert off[0] == medium[0] == (160, 120)
     assert off[1] != medium[1], "medium preset did not change the frame"
+
+    assert frame("medium", intensity=0.0) == off, "zero intensity was not off"
+    dim = frame("medium", intensity=0.5)
+    assert dim != medium, "intensity did not change the medium preset"
+    assert dim != frame("medium", intensity=0.0)
+
+    clamped = CrtOverlay((160, 120), preset="medium", intensity=-5.0)
+    assert clamped.intensity == 0.0
+    clamped.set_intensity(5.0)
+    assert clamped.intensity == 1.0
 
     reference = pygame.Surface((160, 120))
     reference.fill((40, 70, 110))
