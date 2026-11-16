@@ -35,6 +35,32 @@ audio ------------------------^
 That keeps each concern in its own file, so parallel work can be split by
 module without two editors touching the same code.
 
+### Parallel lanes
+
+Each lane is a branch plus a worktree, with an agent that can only edit that
+lane's files:
+
+| Lane | Branch / worktree | Owns | Agent |
+| --- | --- | --- | --- |
+| covers | `covers` / `~/si-covers` | `covers.py` | `covers` |
+| music | `music` / `~/si-music` | `music.py`, `audio.py` | `music` |
+| gameplay | `gameplay` / `~/si-gameplay` | `game.py`, `entities.py` | `gameplay` |
+| ui | `ui` / `~/si-ui` | `render.py` | `ui` |
+
+The agent definitions live in `.opencode/agents/`. They deny `edit`, `write`,
+and `patch` on everything except the owned files, so a lane cannot change
+another module or a shared file by accident. Launch one per worktree:
+
+```bash
+cd ~/si-covers
+opencode run --agent covers "make the ringed-giant covers rarer"
+```
+
+Shared files (`main.py`, `config.py`, `deps.py`, `assets.py`,
+`leaderboard.py`, `selftest.py`, `README.md`) belong to the integration
+session in `~/space_invaders`. Lanes commit on their own branch; integration
+merges them into `main` after the selftest passes.
+
 
 ## Run
 
