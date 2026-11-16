@@ -61,6 +61,15 @@ Shared files (`main.py`, `config.py`, `deps.py`, `assets.py`,
 session in `~/space_invaders`. Lanes commit on their own branch; integration
 merges them into `main` after the selftest passes.
 
+The `integrate` agent runs that side of the workflow. It has full edit rights
+on `main` and a merge checklist: inspect the lane, run its gates, merge with
+`--no-ff`, run the full gate, then fast-forward the other lanes.
+
+```bash
+cd ~/space_invaders
+opencode run --agent integrate "merge the covers lane"
+```
+
 
 ## Run
 
