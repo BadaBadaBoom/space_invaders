@@ -121,7 +121,9 @@ and painted backdrops, but no soundtrack.
 There are no audio files. On launch — and again every time you start a game or
 clear a wave — `music.py` composes a brand-new track from a random seed and
 renders it to raw 16-bit stereo PCM, which is then looped on a reserved mixer
-channel and crossfaded in.
+channel and crossfaded in. The next wave's genre is chosen one wave ahead and
+rendered while the current track plays, so the change is ready when the next
+wave starts.
 
 Every wave gets a different **genre**, drawn from a shuffled bag so all seven
 play before any repeats, and two waves in a row never share one:
