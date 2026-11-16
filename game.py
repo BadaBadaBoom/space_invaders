@@ -40,6 +40,7 @@ from config import (
     PLAYER_SPEED,
     PLAYER_W,
     RIGHT_WALL,
+    ROW_COLORS,
     ROW_POINTS,
     ROWS,
     SHIELD_W,
@@ -70,6 +71,18 @@ class Game(RenderMixin):
             "clank": make_tone(330, 45, 0.10),
             "blast": make_tone(82, 320, 0.22),
         }
+        # Pre-render the beat-the-record boom once per Game instance, never
+        # on the victory frame. Without numpy (metal is None), without the
+        # synth hook, or without an initialised mixer we simply go without.
+        if (metal is not None and hasattr(metal, "explosion")
+                and pygame.mixer.get_init()):
+            try:
+                boom = pygame.mixer.Sound(buffer=metal.explosion())
+                boom.set_volume(0.85)
+            except Exception:  # noqa: BLE001 - synth failure: keep going
+                boom = None
+            if boom is not None:
+                self.sounds["record"] = boom
         self.canvas = pygame.Surface((WIDTH, HEIGHT))
         self.avatar_tiles = load_avatar_tiles()
         self.leaderboard = leaderboard if leaderboard is not None else Leaderboard()
@@ -104,6 +117,9 @@ class Game(RenderMixin):
         self.bunker_cells_total = 0  # cells deployed across all waves this run
         self.last_rank: int | None = None
         self.pending_record = False
+        # Snapshot the board's best so this run can celebrate beating it once.
+        self.record_to_beat = self.leaderboard.best
+        self.record_beaten = False
         self.genre_bag = []
         self.music_genre = None
         self.spawn_wave()
@@ -397,6 +413,9 @@ class Game(RenderMixin):
         d.y = clamp(d.y, FIELD_TOP, FLOOR_Y - d.size)
 
     def destroy_drifter(self, d: Drifter) -> None:
+        # A bullet kill pays DRIFTER_POINTS in check_drifter_collisions just
+        # before calling us, so this is the first chance to celebrate.
+        self.maybe_celebrate_record()
         try:
             self.drifters.remove(d)
         except ValueError:
@@ -422,6 +441,40 @@ class Game(RenderMixin):
         self.flashes.append([x, y, 0.10, 0.10, (255, 255, 255), 30.0])
         self.flashes.append([x, y, 0.22, 0.22,
                              self.rng.choice(palette), 22.0])
+
+    def maybe_celebrate_record(self) -> None:
+        """One-time fireworks when player-earned points pass the board's best.
+
+        Called only after alien kills and badge payouts, never from the wave
+        bonus. Half the surviving formation (floor division, so at least one
+        alien stays when two or more remain) pops in its row colour. These
+        kills award no score and no shot statistics, and the record boom
+        plays once for the whole celebration. An empty board never triggers.
+        """
+        if (self.record_to_beat <= 0 or self.record_beaten
+                or self.score <= self.record_to_beat):
+            return
+        self.record_beaten = True
+        self.play("record")
+        alive = self.alive_aliens()
+        for a in self.rng.sample(alive, len(alive) // 2):
+            a.alive = False
+            cx, cy = a.x + ALIEN_W / 2, a.y + ALIEN_H / 2
+            palette = [ROW_COLORS[a.row]]
+            for _ in range(16):
+                angle = self.rng.uniform(0.0, math.tau)
+                speed = self.rng.uniform(50.0, 330.0)
+                life = self.rng.uniform(0.35, 0.85)
+                colour = self.rng.choice(palette + [(255, 255, 255)])
+                self.debris.append([cx, cy, math.cos(angle) * speed,
+                                    math.sin(angle) * speed, life, life,
+                                    colour, self.rng.choice((2, 3, 3, 4, 5))])
+            for _ in range(2):
+                self.rings.append([cx, cy, 6.0, 0.34,
+                                   self.rng.choice(palette)])
+            self.flashes.append([cx, cy, 0.10, 0.10, (255, 255, 255), 30.0])
+            self.flashes.append([cx, cy, 0.22, 0.22,
+                                 self.rng.choice(palette), 22.0])
 
     def check_collisions(self) -> None:
         # Player bullets: bunkers first, then aliens (highest one wins).
@@ -465,6 +518,8 @@ class Game(RenderMixin):
             for s in self.shields:
                 if s.bounds().colliderect(area):
                     s.erase_rect(area)
+
+        self.maybe_celebrate_record()
 
     def damage_shield(self, rect: pygame.Rect, vy: float,
                       by_player: bool = False) -> bool:
