@@ -61,7 +61,9 @@ DRIFTER_SIZE = 39            # a little larger than an alien (34 x 24)
 DRIFTER_SPEED_MIN, DRIFTER_SPEED_MAX = 70.0, 125.0
 DRIFTER_SPAWN_DELAY = 2.2
 DRIFTER_RESPAWN = 4.5
-DRIFTER_POINTS = 50
+DRIFTER_LIFE = 10.0           # seconds before a badge fades out and pops
+DRIFTER_POINTS = 100          # the most it pays, for a hit at spawn
+DRIFTER_POINTS_MIN = 10       # the least, just before it fades away
 # The badge limit is the wave number: 1 on wave 1, 2 on wave 2, and so on.
 
 # NASA story card on the game-over screen.

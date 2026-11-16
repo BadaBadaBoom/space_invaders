@@ -389,7 +389,11 @@ def check_news() -> None:
         <a href="https://www.nasa.gov/story-a/" class="hds-content-item-heading">
           <div class="hds-a11y-heading-22">First &amp; Story</div>
         </a>
+        <div class="hds-content-item-readtime label margin-bottom-1">3 min read</div>
         <p class="margin-top-0 margin-bottom-1">A real summary &hellip;</p>
+        <div class="display-flex flex-align-center label color-carbon-60">
+          <span>Blog</span>
+        </div>
         <img src="https://www.nasa.gov/a.jpg?w=300">
       </div>
       <div class="hds-content-item">
@@ -414,6 +418,8 @@ def check_news() -> None:
     assert first.title == "First & Story", first.title
     assert first.summary.startswith("A real summary")
     assert first.image_url.endswith("?w=600"), first.image_url
+    assert first.kind == "Blog", first.kind
+    assert first.read_time == "3 min read", first.read_time
     assert listing.stories[1].image_url.endswith("?w=600")
 
     attrs = read_block_attrs(page)
