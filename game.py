@@ -17,6 +17,21 @@ from config import (
     ALIEN_BULLET_SPEED,
     ALIEN_H,
     ALIEN_W,
+    BOSS_EVERY,
+    BOSS_COLOR,
+    BOSS_FIRE_MAX,
+    BOSS_FIRE_MIN,
+    BOSS_H,
+    BOSS_HP_BASE,
+    BOSS_HP_STEP,
+    BOSS_LIGHT,
+    BOSS_SCORE_BASE,
+    BOSS_SCORE_STEP,
+    BOSS_SWAY,
+    BOSS_SWAY_SPEED,
+    BOSS_VOLLEY_SPEED,
+    BOSS_W,
+    BOSS_Y,
     COLS,
     DRIFTER_LIFE,
     DRIFTER_RESPAWN,
@@ -72,7 +87,16 @@ from config import (
     clamp,
 )
 from deps import metal
-from entities import Alien, Bullet, Drifter, Player, PowerUp, Shield, Ufo
+from entities import (
+    Alien,
+    Boss,
+    Bullet,
+    Drifter,
+    Player,
+    PowerUp,
+    Shield,
+    Ufo,
+)
 from leaderboard import Leaderboard
 from render import RenderMixin
 
@@ -164,14 +188,23 @@ class Game(RenderMixin):
 
     def spawn_wave(self) -> None:
         self.aliens: list[Alien] = []
-        for row in range(ROWS):
-            for col in range(COLS):
-                self.aliens.append(Alien(
-                    col=col,
-                    row=row,
-                    x=FORMATION_LEFT + col * (ALIEN_W + GAP_X),
-                    y=FORMATION_TOP + row * (ALIEN_H + GAP_Y),
-                ))
+        self.boss: Boss | None = None
+        self.boss_phase = 0.0
+        self.boss_flash = 0.0
+        self.boss_volley = BOSS_FIRE_MAX
+        self.boss_volley_index = 0
+        self.victory_timer = 0.0
+        if self.wave % BOSS_EVERY == 0:
+            self.spawn_boss()
+        else:
+            for row in range(ROWS):
+                for col in range(COLS):
+                    self.aliens.append(Alien(
+                        col=col,
+                        row=row,
+                        x=FORMATION_LEFT + col * (ALIEN_W + GAP_X),
+                        y=FORMATION_TOP + row * (ALIEN_H + GAP_Y),
+                    ))
         self.direction = 1
         self.player_bullets.clear()
         self.alien_bullets.clear()
@@ -180,7 +213,6 @@ class Game(RenderMixin):
         self.flashes: list[list[float]] = []
         self.drifters: list[Drifter] = []
         self.drifter_timer = DRIFTER_SPAWN_DELAY
-        self.powerups = []
         self.shields = self.make_shields()
         self.bunker_cells_total += sum(s.alive_cells() for s in self.shields)
         self.fire_timer = max(0.45, 1.3 - 0.1 * (self.wave - 1))
@@ -192,6 +224,19 @@ class Game(RenderMixin):
         self.next_music_genre = self.choose_music_genre()
         self.pulp_bg = make_pulp_background(
             random.Random(self.rng.getrandbits(48)))
+
+    def spawn_boss(self) -> None:
+        """Field the wave's boss: tougher and richer with every fifth wave."""
+        tier = self.wave // BOSS_EVERY           # 1 on wave 5, 2 on wave 10
+        hp = BOSS_HP_BASE + BOSS_HP_STEP * (tier - 1)
+        self.boss = Boss(
+            x=(WIDTH - BOSS_W) / 2,
+            y=BOSS_Y,
+            hp=hp,
+            max_hp=hp,
+            points=BOSS_SCORE_BASE + BOSS_SCORE_STEP * (tier - 1),
+        )
+        self.fire_timer = BOSS_FIRE_MAX
 
     def choose_music_genre(self) -> str | None:
         """Cycle through the genre bag so no two waves share a style."""
@@ -235,13 +280,17 @@ class Game(RenderMixin):
         self.update_player(dt, move, fire)
         self.update_bullets(dt)
         self.update_aliens(dt)
+        self.update_boss(dt)
         self.update_alien_fire(dt)
         self.update_drifters(dt)
         self.update_ufo(dt)
         self.update_powerups(dt)
         self.check_collisions()
 
-        if not self.alive_aliens():
+        if self.victory_timer > 0:
+            # Let the boss explosion play before the next wave rolls in.
+            self.victory_timer = max(0.0, self.victory_timer - dt)
+        elif not self.alive_aliens() and self.boss is None:
             self.next_wave()
         elif self.lowest_alien_y() + ALIEN_H >= LANDING_Y:
             self.game_over()
@@ -279,10 +328,12 @@ class Game(RenderMixin):
         for b in self.player_bullets + self.alien_bullets:
             b.update(dt)
         self.player_bullets = [
-            b for b in self.player_bullets if FIELD_TOP <= b.y < HEIGHT
+            b for b in self.player_bullets
+            if FIELD_TOP <= b.y < HEIGHT and -40 <= b.x <= WIDTH + 40
         ]
         self.alien_bullets = [
-            b for b in self.alien_bullets if b.y + b.height <= FLOOR_Y
+            b for b in self.alien_bullets
+            if b.y + b.height <= FLOOR_Y and -40 <= b.x <= WIDTH + 40
         ]
 
     def update_aliens(self, dt: float) -> None:
@@ -304,6 +355,92 @@ class Game(RenderMixin):
         # Marching animation: faster as the formation thins out.
         self.alien_anim += dt * (2.0 + 6.0 * (1.0 - len(alive) / (COLS * ROWS)))
 
+    def update_boss(self, dt: float) -> None:
+        """Hover, sway and volley. The boss never joins a formation march."""
+        boss = self.boss
+        if boss is None:
+            return
+        self.boss_phase += dt
+        sway = math.sin(self.boss_phase * BOSS_SWAY_SPEED) * BOSS_SWAY
+        boss.x = clamp((WIDTH - BOSS_W) / 2 + sway,
+                       LEFT_WALL + 6, RIGHT_WALL - BOSS_W - 6)
+        self.boss_flash = max(0.0, self.boss_flash - dt)
+        self.boss_volley -= dt
+        if self.boss_volley <= 0:
+            self.fire_boss_volley()
+            self.boss_volley = self.rng.uniform(BOSS_FIRE_MIN, BOSS_FIRE_MAX)
+
+    def fire_boss_volley(self) -> None:
+        """Cycle a hull-wide fan, an aimed triple, and a scattered rain."""
+        boss = self.boss
+        if boss is None:
+            return
+        pattern = self.boss_volley_index % 3
+        self.boss_volley_index += 1
+        cx = boss.x + BOSS_W / 2
+        bottom = boss.y + BOSS_H
+        if pattern == 0:
+            # Fan: one shot from each pod position across the hull.
+            for i in range(5):
+                x = boss.x + 16 + i * (BOSS_W - 32) / 4
+                self.alien_bullets.append(Bullet(
+                    x=x - 3, y=bottom, vy=ALIEN_BULLET_SPEED,
+                    from_player=False))
+        elif pattern == 1:
+            # Aimed: a tight triple that converges on the ship.
+            dx = self.player.center_x - cx
+            dy = max(40.0, self.player.y - bottom)
+            length = math.hypot(dx, dy)
+            speed = BOSS_VOLLEY_SPEED
+            vx = clamp(speed * dx / length, -180.0, 180.0)
+            vy = max(80.0, speed * dy / length)
+            for offset in (-14, 0, 14):
+                self.alien_bullets.append(Bullet(
+                    x=cx + offset - 3, y=bottom, vy=vy,
+                    from_player=False, vx=vx))
+        else:
+            # Rain: scattered shots with mixed fall speeds.
+            for _ in range(6):
+                self.alien_bullets.append(Bullet(
+                    x=self.rng.uniform(LEFT_WALL, RIGHT_WALL) - 3,
+                    y=bottom,
+                    vy=self.rng.uniform(ALIEN_BULLET_SPEED * 0.8,
+                                        ALIEN_BULLET_SPEED * 1.35),
+                    from_player=False))
+
+    def damage_boss(self) -> None:
+        boss = self.boss
+        if boss is None:
+            return
+        boss.hp -= 1
+        self.shots_hit += 1
+        self.boss_flash = 0.09
+        self.play("hit")
+        self.spawn_sparks(
+            boss.x + BOSS_W / 2
+            + self.rng.uniform(-BOSS_W * 0.35, BOSS_W * 0.35),
+            boss.y + BOSS_H * 0.7)
+        if boss.hp <= 0:
+            self.kill_boss()
+
+    def kill_boss(self) -> None:
+        boss = self.boss
+        if boss is None:
+            return
+        self.boss = None
+        self.boss_flash = 0.0
+        self.alien_bullets.clear()
+        self.score += boss.points
+        cx, cy = boss.x + BOSS_W / 2, boss.y + BOSS_H / 2
+        self.spawn_popup(cx, boss.y, f"+{boss.points}", BOSS_LIGHT)
+        palette = [BOSS_COLOR, BOSS_LIGHT, (255, 255, 255)]
+        for offset in (-BOSS_W * 0.30, 0.0, BOSS_W * 0.30):
+            self.explode(cx + offset, cy + self.rng.uniform(-10, 10), palette)
+        self.play("boom")
+        self.victory_timer = 1.6
+        self.spawn_powerup(self.roll_powerup_kind(), cx, cy)
+        self.maybe_celebrate_record()
+
     def update_alien_fire(self, dt: float) -> None:
         self.fire_timer -= dt
         if self.fire_timer > 0 or len(self.alien_bullets) >= 4:
@@ -316,6 +453,8 @@ class Game(RenderMixin):
             current = columns.get(a.col)
             if current is None or a.y > current.y:
                 columns[a.col] = a
+        if not columns:
+            return      # boss waves have no formation to shoot from
         shooter = self.rng.choice(list(columns.values()))
         self.alien_bullets.append(Bullet(
             x=shooter.x + ALIEN_W / 2 - 3,
@@ -328,8 +467,9 @@ class Game(RenderMixin):
         if not self.avatar_tiles:
             return
         self.drifter_timer = max(0.0, self.drifter_timer - dt)
-        # Wave 1 allows one badge, wave 2 two, wave 3 three, and so on.
-        target = max(1, self.wave)
+        # Wave 1 allows one badge, wave 2 two, wave 3 three, and so on; a boss
+        # wave keeps just one so the fight stays readable.
+        target = 1 if self.boss is not None else max(1, self.wave)
         if len(self.drifters) < target and self.drifter_timer <= 0:
             self.spawn_drifter()
             self.drifter_timer = DRIFTER_RESPAWN
@@ -431,14 +571,16 @@ class Game(RenderMixin):
         """A small share of alien kills leaves a capsule behind."""
         if self.rng.random() >= POWERUP_DROP_CHANCE:
             return
+        self.spawn_powerup(self.roll_powerup_kind(), x, y)
+
+    def roll_powerup_kind(self) -> str:
+        """Pick a capsule kind, leaving repair out while bunkers are whole."""
         kinds = list(POWERUP_KINDS)
         weights = list(POWERUP_WEIGHTS)
         if all(shield.alive_cells() >= shield.intact for shield in self.shields):
-            # Nothing to patch up, so only the timed boosts can drop.
             weights = [weight if kind != "repair" else 0.0
                        for kind, weight in zip(kinds, weights)]
-        kind = self.rng.choices(kinds, weights=weights, k=1)[0]
-        self.spawn_powerup(kind, x, y)
+        return self.rng.choices(kinds, weights=weights, k=1)[0]
 
     def spawn_powerup(self, kind: str, x: float, y: float) -> None:
         self.powerups.append(PowerUp(
@@ -655,6 +797,9 @@ class Game(RenderMixin):
         for b in self.player_bullets:
             path = b.sweep_rect()
             if self.damage_shield(path, b.vy, by_player=True):
+                continue
+            if self.boss is not None and path.colliderect(self.boss.rect()):
+                self.damage_boss()
                 continue
             if self.ufo is not None and path.colliderect(self.ufo.rect()):
                 self.hit_ufo()

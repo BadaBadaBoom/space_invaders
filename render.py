@@ -13,6 +13,11 @@ from config import (
     ALIEN_W,
     BG_BOTTOM,
     BG_TOP,
+    BOSS_COLOR,
+    BOSS_DARK,
+    BOSS_H,
+    BOSS_LIGHT,
+    BOSS_W,
     FIELD_TOP,
     FLOOR_Y,
     HEIGHT,
@@ -169,6 +174,7 @@ class RenderMixin:
         if self.state not in ("title", "scores"):
             self.draw_aliens(surface)
             self.draw_ufo(surface)
+            self.draw_boss(surface)
             self.draw_shields(surface)
             self.draw_drifters(surface)
             self.draw_bullets(surface)
@@ -296,6 +302,78 @@ class RenderMixin:
             lit = (tick // 130 + i) % 3 != 0
             pygame.draw.circle(surface, UFO_LIGHT if lit else (96, 70, 52),
                                (lx, y + h - 4), 2)
+
+    def draw_boss(self, surface: pygame.Surface) -> None:
+        """The wide wave boss, with a segmented health bar above it."""
+        boss = self.boss
+        if boss is None:
+            return
+        x, y = int(boss.x), int(boss.y)
+        w, h = BOSS_W, BOSS_H
+        flash = self.boss_flash > 0
+        hull = (255, 255, 255) if flash else BOSS_COLOR
+        dark = (255, 255, 255) if flash else BOSS_DARK
+        rim = (170, 110, 150) if not flash else (255, 255, 255)
+        light = BOSS_LIGHT if not flash else (255, 255, 255)
+
+        glow = pygame.Surface((w + 40, h + 40), pygame.SRCALPHA)
+        pygame.draw.ellipse(glow, (*BOSS_COLOR, 26), glow.get_rect())
+        surface.blit(glow, (x - 20, y - 20))
+
+        # Engine pods either side of the hull.
+        pod_y = y + int(h * 0.42)
+        pygame.draw.ellipse(surface, dark, (x - 8, pod_y, 32, 24))
+        pygame.draw.ellipse(surface, dark, (x + w - 24, pod_y, 32, 24))
+        for px in (x + 1, x + w - 27):
+            pygame.draw.rect(surface, light, (px, pod_y + 14, 12, 4),
+                             border_radius=2)
+
+        # Wide hexagonal hull.
+        hull_pts = [
+            (x + 12, y + int(h * 0.46)),
+            (x + int(w * 0.22), y + int(h * 0.16)),
+            (x + int(w * 0.78), y + int(h * 0.16)),
+            (x + w - 12, y + int(h * 0.46)),
+            (x + int(w * 0.72), y + int(h * 0.88)),
+            (x + int(w * 0.28), y + int(h * 0.88)),
+        ]
+        pygame.draw.polygon(surface, hull, hull_pts)
+        pygame.draw.polygon(surface, rim, hull_pts, 2)
+
+        # Cockpit dome with a row of eyes.
+        dome = pygame.Rect(x + int(w * 0.26), y + 2, int(w * 0.48),
+                           int(h * 0.42))
+        pygame.draw.ellipse(surface, dark, dome)
+        pygame.draw.arc(surface, rim, dome, math.radians(190),
+                        math.radians(350), 2)
+        for ex in (-18, 0, 18):
+            pygame.draw.circle(surface, light,
+                               (x + w // 2 + ex, y + int(h * 0.24)), 4)
+
+        # Vent grille and hull lights.
+        for i in range(5):
+            vx = x + int(w * 0.34) + i * 12
+            pygame.draw.rect(surface, dark, (vx, y + int(h * 0.62), 7, 10),
+                             border_radius=2)
+        for i in range(4):
+            lx = x + int(w * 0.16) + i * int(w * 0.22)
+            pygame.draw.circle(surface, light, (lx, y + int(h * 0.44)), 2)
+
+        # Segmented health bar, kept above the hull.
+        bar = pygame.Rect(x, y - 14, w, 7)
+        pygame.draw.rect(surface, (26, 18, 36), bar, border_radius=3)
+        fraction = max(0.0, boss.hp / boss.max_hp)
+        if fraction > 0:
+            colour = (255, 110, 130) if fraction < 0.35 else (255, 205, 90)
+            fill = pygame.Rect(bar.x + 1, bar.y + 1,
+                               max(1, int((bar.w - 2) * fraction)), bar.h - 2)
+            pygame.draw.rect(surface, colour, fill, border_radius=2)
+        for i in range(1, 10):
+            tx = bar.x + bar.w * i // 10
+            pygame.draw.line(surface, (26, 18, 36), (tx, bar.y + 1),
+                             (tx, bar.y + bar.h - 2), 1)
+        pygame.draw.rect(surface, (110, 80, 130), bar, width=1,
+                         border_radius=3)
 
     def draw_shields(self, surface: pygame.Surface) -> None:
         for s in self.shields:

@@ -14,7 +14,8 @@ main.py        bootstrap, CLI, input, and the event loop
 config.py      constants, colours, and file paths
 deps.py        optional music/covers/numpy imports
 assets.py      fonts, avatar tiles, cover delegation, tone blips
-entities.py    bullets, aliens, player, bunkers, avatar hazards, UFO, capsules
+entities.py    bullets, aliens, player, bunkers, avatar hazards, UFO, capsules,
+               the wave boss
 leaderboard.py persistent top-100 table
 audio.py       MusicPlayer worker thread and mixer channels
 render.py      RenderMixin: playfield, HUD, leaderboard, overlays
@@ -249,6 +250,25 @@ The HUD shows the remaining seconds under the lives. A repair capsule only
 drops when a bunker is actually damaged, and the rebuilt cells count as
 deployed, so the run's bunker percentage stays meaningful.
 
+## Boss waves
+
+Every fifth wave fields one wide machine instead of the formation. It hovers
+near the top, swaying ±46 px, never marches, never drops toward the landing
+line, and brings no escorts.
+
+- **Health** scales with the boss number — 30 hits on wave 5, 42 on wave 10,
+  54 on wave 15 — shown as a segmented bar above the hull that turns red in
+  the last third.
+- **Three fire patterns** cycle: a five-shot fan from across the hull, a
+  three-shot volley aimed at your current position (its bullets lean
+  horizontally to reach a ship at either wall), and a six-shot rain scattered
+  across the arena at mixed speeds.
+- Each bullet hit is one point of damage and flashes the hull. The kill clears
+  every enemy bullet, pays 1000 points (plus 250 per later boss), explodes
+  three times, drops a guaranteed power-up capsule, and holds the arena for
+  1.6 s before the next wave starts.
+- Only one avatar badge floats during a boss wave, so the fight stays readable.
+
 ## 1960s cover art backdrops
 
 Every wave paints a new 800×600 backdrop in the style of a 1960s
@@ -332,6 +352,8 @@ size, and `off` or 0% intensity skips it entirely.
   worth 50–300 points and hittable only through a cleared column
 - **Power-up capsules**: some alien kills drop a falling capsule for rapid
   fire, triple shot or a bunker repair
+- **A boss every fifth wave**: a wide machine with a segmented HP bar, three
+  fire patterns and no formation march
 - 3 lives, brief invulnerability (the ship flashes) after a hit
 - Endless waves: each cleared wave pays a bonus and starts faster
 - Game over when you run out of lives **or** the formation reaches the landing line
@@ -427,6 +449,8 @@ and checking bunker erosion, letterboxed scaling at several resolutions, the
 avatar hazards (bouncing, every collision type, explosion effects, spawning),
 the mystery UFO (spawn timing, crossing, payout and bullet-only kills),
 power-up capsules (drop rate, falling, pickup, both timed boosts and repair),
+boss waves (spawning, scaling, sway bounds, all three volleys, damage, the
+kill payout and the victory pause),
 that each wave paints a different backdrop and rotates through every music
 genre without repeats, that the leaderboard keeps 100 sorted entries, reloads
 correctly and records each run once, that shooting statistics follow the
@@ -453,6 +477,10 @@ and `UFO_POINTS` in `config.py`.
 Power-up capsules use `POWERUP_DROP_CHANCE`, `POWERUP_FALL_SPEED`,
 `POWERUP_RAPID_SCALE`/`TIME`, `POWERUP_TRIPLE_TIME`, and the
 `POWERUP_KINDS`/`WEIGHTS`/`COLORS`/`LABELS` tables.
+
+The boss is tuned by `BOSS_EVERY`, `BOSS_HP_BASE`/`STEP`,
+`BOSS_SCORE_BASE`/`STEP`, `BOSS_SWAY`/`SWAY_SPEED`, `BOSS_FIRE_MIN`/`MAX` and
+`BOSS_VOLLEY_SPEED`.
 
 The leaderboard size is `LEADERBOARD_SIZE` (100) and its path is
 `SCORES_FILE` at the top of `main.py`.

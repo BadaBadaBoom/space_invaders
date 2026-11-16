@@ -10,6 +10,8 @@ import pygame
 from config import (
     ALIEN_H,
     ALIEN_W,
+    BOSS_H,
+    BOSS_W,
     DRIFTER_LIFE,
     DRIFTER_POINTS,
     DRIFTER_POINTS_MIN,
@@ -34,6 +36,8 @@ class Bullet:
     y: float
     vy: float
     from_player: bool
+    vx: float = 0.0
+    prev_x: float = 0.0
     prev_y: float = -1.0
 
     @property
@@ -51,13 +55,16 @@ class Bullet:
         """Rect covering the whole path since the last frame (no tunnelling)."""
         if self.prev_y < 0:
             return self.rect()
+        left = min(self.x, self.prev_x)
         top = min(self.y, self.prev_y)
-        bottom = max(self.y, self.prev_y)
-        return pygame.Rect(int(self.x), int(top), self.width,
-                           int(bottom - top) + self.height)
+        width = int(abs(self.x - self.prev_x)) + self.width + 1
+        height = int(abs(self.y - self.prev_y)) + self.height + 1
+        return pygame.Rect(int(left), int(top), width, height)
 
     def update(self, dt: float) -> None:
+        self.prev_x = self.x
         self.prev_y = self.y
+        self.x += self.vx * dt
         self.y += self.vy * dt
 
 
@@ -146,6 +153,20 @@ class PowerUp:
     def rect(self) -> pygame.Rect:
         return pygame.Rect(int(self.x), int(self.y),
                            POWERUP_SIZE, POWERUP_SIZE)
+
+
+@dataclass
+class Boss:
+    """The wide machine that replaces the formation every fifth wave."""
+
+    x: float
+    y: float
+    hp: int
+    max_hp: int
+    points: int
+
+    def rect(self) -> pygame.Rect:
+        return pygame.Rect(int(self.x), int(self.y), BOSS_W, BOSS_H)
 
 
 class Shield:

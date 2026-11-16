@@ -106,6 +106,22 @@ POWERUP_COLORS = {
 }
 POWERUP_LABELS = {"rapid": "R", "triple": "T", "repair": "B"}
 
+# Boss wave: every fifth wave a single wide machine replaces the formation.
+BOSS_EVERY = 5
+BOSS_W, BOSS_H = 132, 58
+BOSS_Y = FORMATION_TOP + 12
+BOSS_SWAY = 46.0            # pixels either side of centre while it hovers
+BOSS_SWAY_SPEED = 0.55      # radians per second
+BOSS_HP_BASE = 30
+BOSS_HP_STEP = 12
+BOSS_SCORE_BASE = 1000
+BOSS_SCORE_STEP = 250
+BOSS_FIRE_MIN, BOSS_FIRE_MAX = 1.4, 2.2
+BOSS_VOLLEY_SPEED = 250.0
+BOSS_COLOR = (238, 120, 190)
+BOSS_DARK = (58, 26, 62)
+BOSS_LIGHT = (255, 210, 120)
+
 # NASA story card on the game-over screen.
 NEWS_URL = "https://www.nasa.gov/news/recently-published/"
 NEWS_TIMEOUT = 8.0

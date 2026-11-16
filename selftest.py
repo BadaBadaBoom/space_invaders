@@ -15,6 +15,11 @@ from config import (
     ALIEN_H,
     ALIEN_W,
     AVATAR_SHEET,
+    BOSS_HP_BASE,
+    BOSS_SCORE_BASE,
+    BOSS_W,
+    BOSS_Y,
+    COLS,
     DRIFTER_LIFE,
     DRIFTER_POINTS,
     DRIFTER_POINTS_MIN,
@@ -36,6 +41,7 @@ from config import (
     POWERUP_TRIPLE_TIME,
     RIGHT_WALL,
     ROW_POINTS,
+    ROWS,
     SHIELD_COLS,
     SHIELD_ROWS,
     SHIELDS,
@@ -76,6 +82,7 @@ def selftest(seconds: float) -> int:
     check_drifters(scores)
     check_ufo()
     check_powerups()
+    check_boss()
     check_feedback()
     check_leaderboard()
     check_clear_scores()
@@ -427,6 +434,88 @@ def check_powerups() -> None:
     game.apply_powerup(PowerUp("repair", 100, 100))
     assert bunker.alive_cells() == bunker.intact, "bunker was not repaired"
     assert game.bunker_cells_total > deployed
+
+
+def check_boss() -> None:
+    """Every fifth wave fields one wide boss instead of a formation."""
+    game = Game(seed=51)
+    game.start()
+    assert game.wave == 1 and game.boss is None
+    assert len(game.alive_aliens()) == COLS * ROWS
+
+    # Wave 5 replaces the 32 aliens with a single machine.
+    game.wave = 5
+    game.spawn_wave()
+    boss = game.boss
+    assert boss is not None, "wave 5 did not spawn a boss"
+    assert game.alive_aliens() == [], "boss wave kept the formation"
+    assert boss.max_hp == BOSS_HP_BASE
+    assert boss.points == BOSS_SCORE_BASE
+    assert boss.y == BOSS_Y
+
+    # Later bosses are tougher and worth more; ordinary waves recovered.
+    game.wave = 10
+    game.spawn_wave()
+    assert game.boss is not None and game.boss.max_hp > boss.max_hp
+    assert game.boss.points > boss.points
+    game.wave = 6
+    game.spawn_wave()
+    assert game.boss is None and len(game.alive_aliens()) == COLS * ROWS
+
+    # It hovers inside the arena and never marches like the formation.
+    game.wave = 5
+    game.spawn_wave()
+    boss = game.boss
+    xs = []
+    for _ in range(240):
+        game.update_boss(1 / 60)
+        xs.append(boss.x)
+    assert max(xs) - min(xs) > 10, "boss never swayed"
+    assert min(xs) >= LEFT_WALL and max(xs) + BOSS_W <= RIGHT_WALL
+    assert boss.y == BOSS_Y, "boss drifted vertically"
+
+    # Volleys cycle a fan, an aimed triple and a rain of shots.
+    game.boss_volley_index = 0
+    game.alien_bullets.clear()
+    game.player.x = LEFT_WALL + 4
+    game.fire_boss_volley()
+    assert len(game.alien_bullets) == 5, "fan volley lost shots"
+    game.alien_bullets.clear()
+    game.fire_boss_volley()
+    aimed = list(game.alien_bullets)
+    assert len(aimed) == 3, "aimed volley lost shots"
+    assert all(bullet.vx < 0 for bullet in aimed), (
+        "aimed volley did not lean toward a ship on the left")
+    game.alien_bullets.clear()
+    game.fire_boss_volley()
+    assert len(game.alien_bullets) == 6, "rain volley lost shots"
+
+    # Damage ticks down, then the kill pays out and clears the screen.
+    game.alien_bullets = [Bullet(100, 300, 200, False)]
+    boss = game.boss
+    game.score = 0
+    game.shots_hit = 0
+    start_hp = boss.hp
+    game.damage_boss()
+    assert boss.hp == start_hp - 1 and game.shots_hit == 1
+    assert game.boss_flash > 0, "hit did not flash the boss"
+    boss.hp = 1
+    game.damage_boss()
+    assert game.boss is None, "boss survived its last hit"
+    assert game.score == boss.points
+    assert game.alien_bullets == [], "boss bullets survived the kill"
+    assert game.victory_timer > 0, "no pause for the explosion"
+    assert game.powerups, "boss kill dropped no capsule"
+
+    # After the victory pause the next wave rolls in.
+    game.player.invulnerable = 999.0
+    for _ in range(120):
+        game.update(1 / 60)
+        if game.wave == 6:
+            break
+    assert game.wave == 6, "wave did not advance after the boss died"
+    assert game.boss is None and game.alive_aliens()
+    assert game.powerups, "the reward capsule died with the wave change"
 
 
 def check_feedback() -> None:
