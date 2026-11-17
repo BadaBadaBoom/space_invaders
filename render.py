@@ -45,6 +45,7 @@ from config import (
     UFO_W,
     UI_COLOR,
     UI_DIM,
+    UI_RECORD,
     WIDTH,
 )
 from entities import Alien
@@ -541,7 +542,10 @@ class RenderMixin:
     def draw_hud(self, surface: pygame.Surface) -> None:
         # Live record: follows the running score the moment it passes the board.
         best = max(self.leaderboard.best, self.score)
-        best_text = self.font_tiny.render(f"BEST {best:05d}", True, UI_DIM)
+        best_label = f"BEST {best:05d}"
+        best_shadow = self.font_tiny.render(best_label, True, (10, 10, 20))
+        best_text = self.font_tiny.render(best_label, True, UI_RECORD)
+        surface.blit(best_shadow, (LEFT_WALL + 1, 5))
         surface.blit(best_text, (LEFT_WALL, 4))
         score = self.font_small.render(f"SCORE {self.score:05d}", True, UI_COLOR)
         wave = self.font_small.render(f"WAVE {self.wave}", True, UI_DIM)
