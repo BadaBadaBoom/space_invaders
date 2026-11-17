@@ -46,6 +46,7 @@ from config import (
     RIGHT_WALL,
     ROW_POINTS,
     ROWS,
+    RECORD_BANNER_TIME,
     SHIELD_COLS,
     SHIELD_ROWS,
     SHIELDS,
@@ -793,6 +794,7 @@ def check_record_celebration() -> None:
         game.maybe_celebrate_record()
         assert not game.record_beaten, "celebrated on a tie"
         assert len(game.alive_aliens()) == before
+        assert game.record_banner_time == 0.0, "tie raised the marquee"
 
         game.score = 501
         game.maybe_celebrate_record()
@@ -801,6 +803,12 @@ def check_record_celebration() -> None:
         assert popped == before // 2, f"expected half the formation, got {popped}"
         assert len(game.debris) > debris_before, "no explosion debris"
         assert game.score == 501, "celebration awarded points"
+        assert game.record_banner_time == RECORD_BANNER_TIME, (
+            "no marquee for the new record")
+        assert game.record_banner_score == 501, "marquee shows the wrong score"
+        game.draw(game.canvas)          # the marquee must paint without raising
+        game.update_feedback(RECORD_BANNER_TIME + 0.01)
+        assert game.record_banner_time == 0.0, "marquee never expired"
 
         remaining = len(game.alive_aliens())
         game.maybe_celebrate_record()

@@ -30,6 +30,8 @@ from config import (
     POWERUP_COLORS,
     POWERUP_LABELS,
     POWERUP_SIZE,
+    RECORD_BANNER_SCROLL,
+    RECORD_BANNER_TIME,
     RIGHT_WALL,
     ROW_COLORS,
     SHIELD_TOP_COLOR,
@@ -156,6 +158,7 @@ class RenderMixin:
             popup[1] -= POPUP_RISE * dt
             popup[4] -= dt
         self.popups = [p for p in self.popups if p[4] > 0]
+        self.record_banner_time = max(0.0, self.record_banner_time - dt)
 
     def shake_offset(self) -> tuple[int, int]:
         """Current whole-canvas offset in pixels, or (0, 0) when settled."""
@@ -184,6 +187,7 @@ class RenderMixin:
             self.draw_popups(surface)
             self.draw_hud(surface)
         self.draw_overlay(surface)
+        self.draw_record_banner(surface)
 
     def draw_background(self, surface: pygame.Surface) -> None:
         for y in range(0, HEIGHT, 6):
@@ -677,6 +681,37 @@ class RenderMixin:
             surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 374))
             surface.blit(scores_hint,
                          (WIDTH // 2 - scores_hint.get_width() // 2, 404))
+
+    def draw_record_banner(self, surface: pygame.Surface) -> None:
+        """A flashing marquee that scrolls the new record across the arena."""
+        remaining = self.record_banner_time
+        if remaining <= 0:
+            return
+        elapsed = RECORD_BANNER_TIME - remaining
+        fade = min(1.0, remaining / 0.30)
+        height = 88
+        top = 232
+
+        band = pygame.Surface((WIDTH, height), pygame.SRCALPHA)
+        band.fill((12, 9, 24, int(176 * fade)))
+        surface.blit(band, (0, top))
+
+        flash = int(elapsed / 0.11) % 2 == 0
+        colour = (255, 246, 205) if flash else (255, 197, 92)
+        pygame.draw.rect(surface, colour, (0, top, WIDTH, 2))
+        pygame.draw.rect(surface, colour, (0, top + height - 2, WIDTH, 2))
+
+        text = (f"  *  NEW HIGH SCORE  {self.record_banner_score:05d}"
+                f"  *  ")
+        tile = self.font_mid.render(text, True, colour)
+        tile.set_alpha(int(255 * fade))
+        width = max(1, tile.get_width())
+        offset = int(elapsed * RECORD_BANNER_SCROLL) % width
+        baseline = top + height // 2 - tile.get_height() // 2
+        x = -offset
+        while x < WIDTH:
+            surface.blit(tile, (x, baseline))
+            x += width
 
     def draw_gameover_story(self, surface: pygame.Surface, story) -> None:
         """Game-over screen with the NASA story card alongside all stats."""

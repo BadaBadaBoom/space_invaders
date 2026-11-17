@@ -54,6 +54,10 @@ SHAKE_RECORD = 16.0          # half the fleet exploded: new high score
 SHAKE_MAX = 20.0
 SHAKE_DECAY = 0.16
 
+# Celebratory marquee when a run passes the board's best.
+RECORD_BANNER_TIME = 1.5
+RECORD_BANNER_SCROLL = 190.0     # px/s of horizontal marquee travel
+
 # Floating "+points" numbers: how long they live and how fast they rise.
 POPUP_LIFE = 0.9
 POPUP_RISE = 34.0

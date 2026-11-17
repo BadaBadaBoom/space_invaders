@@ -427,7 +427,8 @@ During play the record is shown live as `BEST` above your running score, and it
 follows you once you pass it. The moment a run beats the board's best, half the
 remaining aliens (rounded down, so the wave always keeps at least one) explode
 in their row colours and a 2.2-second synthesized blast plays. It happens once
-per run, and an empty board simply has no record to beat.
+per run, and an empty board simply has no record to beat. A flashing marquee
+then scrolls `NEW HIGH SCORE 05381` across the arena for 1.5 seconds.
 
 ## NASA story at game over
 
@@ -467,7 +468,7 @@ the dash (double-tap window, burst over held input, wall clamp, cooldown),
 that each wave paints a different backdrop and rotates through every music
 genre without repeats, that the leaderboard keeps 100 sorted entries, reloads
 correctly and records each run once, that shooting statistics follow the
-accuracy/bunker rules above, and that the synth is audible, deterministic per
+accuracy/bunker rules above, and that the record marquee fires and expires, and that the synth is audible, deterministic per
 seed, and distinct across genres. Useful in CI without a display.
 
 ## Tweaking
@@ -505,7 +506,8 @@ Screen shake is tuned in `config.py`: `SHAKE_DRIFTER`, `SHAKE_UFO`,
 `SHAKE_LIFE_LOST` and `SHAKE_RECORD` are the peak displacement in canvas
 pixels for each trigger,
 `SHAKE_MAX` caps stacked hits and `SHAKE_DECAY` is the fade time constant in
-seconds. The floating score numbers use `POPUP_LIFE` and `POPUP_RISE`. Set the
+seconds. The floating score numbers use `POPUP_LIFE` and `POPUP_RISE`, and the
+record marquee uses `RECORD_BANNER_TIME` and `RECORD_BANNER_SCROLL`. Set the
 three trigger strengths to 0 to turn shake off. Each wave's alien silhouette
 comes from `alien_look()` in `render.py`, keyed on the wave number.
 

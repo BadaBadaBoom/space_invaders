@@ -73,6 +73,7 @@ from config import (
     ROW_COLORS,
     ROW_POINTS,
     ROWS,
+    RECORD_BANNER_TIME,
     SHAKE_DRIFTER,
     SHAKE_LIFE_LOST,
     SHAKE_RECORD,
@@ -180,6 +181,8 @@ class Game(RenderMixin):
         self.shake_energy = 0.0
         self.shake_phase = 0.0
         self.popups: list[list] = []
+        self.record_banner_time = 0.0
+        self.record_banner_score = 0
         # The mystery saucer, if one is crossing, and the countdown to the next.
         self.ufo: Ufo | None = None
         self.ufo_timer = self.rng.uniform(*UFO_FIRST_DELAY)
@@ -810,6 +813,8 @@ class Game(RenderMixin):
                 or self.score <= self.record_to_beat):
             return
         self.record_beaten = True
+        self.record_banner_time = RECORD_BANNER_TIME
+        self.record_banner_score = self.score
         self.add_shake(SHAKE_RECORD)
         self.play("record")
         alive = self.alive_aliens()
