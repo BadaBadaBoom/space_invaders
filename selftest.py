@@ -912,6 +912,29 @@ def check_record_celebration() -> None:
         game.update_feedback(RECORD_BANNER_TIME + 0.01)
         assert game.record_banner_time == 0.0, "marquee never expired"
 
+        # Play is frozen while the marquee rolls, so nothing can kill you.
+        frozen = Game(seed=13)
+        frozen.start()
+        frozen.player.x = 300
+        frozen.record_banner_time = RECORD_BANNER_TIME
+        start_x = frozen.player.x
+        alien_x = frozen.aliens[0].x
+        bullets = len(frozen.player_bullets)
+        lives = frozen.lives
+        frozen.alien_bullets = [Bullet(frozen.player.center_x,
+                                       frozen.player.y,
+                                       ALIEN_BULLET_SPEED, False)]
+        frozen.update(1 / 60, 1, True)
+        assert frozen.player.x == start_x, "the ship moved during the marquee"
+        assert frozen.aliens[0].x == alien_x, "the fleet marched during it"
+        assert len(frozen.player_bullets) == bullets, "bullets fired during it"
+        assert frozen.lives == lives, "a bullet killed the player during it"
+
+        frozen.alien_bullets.clear()
+        frozen.update_feedback(RECORD_BANNER_TIME + 0.01)
+        frozen.update(1 / 60, 1, False)
+        assert frozen.player.x > start_x, "play did not resume after the marquee"
+
         remaining = len(game.alive_aliens())
         game.maybe_celebrate_record()
         assert len(game.alive_aliens()) == remaining, "celebration repeated"

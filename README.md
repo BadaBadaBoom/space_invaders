@@ -447,7 +447,8 @@ follows you once you pass it. The moment a run beats the board's best, half the
 remaining aliens (rounded down, so the wave always keeps at least one) explode
 in their row colours and a 2.2-second synthesized blast plays. It happens once
 per run, and an empty board simply has no record to beat. A flashing marquee
-then scrolls `NEW HIGH SCORE 05381` across the arena for 1.5 seconds.
+then scrolls `NEW HIGH SCORE 05381` across the arena for 3 seconds, and play
+is frozen while it rolls so the celebration can never get you killed.
 
 ## NASA story at game over
 

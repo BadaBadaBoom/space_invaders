@@ -302,6 +302,10 @@ class Game(RenderMixin):
         """Advance one frame. `move` is -1/0/1, `fire` is edge-triggered."""
         if self.state != "playing":
             return
+        if self.record_banner_time > 0:
+            # Hold the fight while the record marquee rolls, so the
+            # celebration can never get the player killed.
+            return
         dt = min(dt, 1 / 30)  # keep physics sane after a window stall
 
         self.update_player(dt, move, fire)
