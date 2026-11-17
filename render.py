@@ -555,14 +555,38 @@ class RenderMixin:
     def draw_hud(self, surface: pygame.Surface) -> None:
         # Live record: follows the running score the moment it passes the board.
         best = max(self.leaderboard.best, self.score)
-        best_label = f"BEST {best:05d}"
-        best_shadow = self.font_small.render(best_label, True, (10, 10, 20))
-        best_text = self.font_small.render(best_label, True, UI_RECORD)
-        surface.blit(best_shadow, (LEFT_WALL + 1, 3))
-        surface.blit(best_text, (LEFT_WALL, 2))
-        score = self.font_small.render(f"SCORE {self.score:05d}", True, UI_COLOR)
+        best_text = self.font_small.render(
+            f"BEST {best:05d}", True, UI_RECORD)
+        score_text = self.font_small.render(
+            f"SCORE {self.score:05d}", True, UI_COLOR)
+
+        # A small dark plate with a light rim sits behind the two live numbers
+        # so they stay readable over any cover art.  Their widths are fixed
+        # (five digits), so the plate can be built once and reused.
+        plate_w = max(best_text.get_width(), score_text.get_width()) + 16
+        if getattr(self, "_hud_plate_w", None) != plate_w:
+            plate = pygame.Surface((plate_w, 44), pygame.SRCALPHA)
+            pygame.draw.rect(plate, (6, 8, 18, 170),
+                             (0, 0, plate_w, 44), border_radius=7)
+            pygame.draw.rect(plate, (170, 190, 245, 70),
+                             (0, 0, plate_w, 44), width=1, border_radius=7)
+            pygame.draw.line(plate, (210, 225, 255, 45), (8, 1),
+                             (plate_w - 8, 1), 1)
+            self._hud_plate = plate
+            self._hud_plate_w = plate_w
+        surface.blit(self._hud_plate, (LEFT_WALL - 8, 0))
+
+        # A 1px shadow on top of the plate keeps the glyph edges crisp.
+        best_shadow = self.font_small.render(
+            f"BEST {best:05d}", True, (10, 10, 20))
+        score_shadow = self.font_small.render(
+            f"SCORE {self.score:05d}", True, (10, 10, 20))
+        surface.blit(best_shadow, (LEFT_WALL + 1, 2))
+        surface.blit(best_text, (LEFT_WALL, 1))
+        surface.blit(score_shadow, (LEFT_WALL + 1, 24))
+        surface.blit(score_text, (LEFT_WALL, 23))
         wave = self.font_small.render(f"WAVE {self.wave}", True, UI_DIM)
-        surface.blit(score, (LEFT_WALL, 25))
+        surface.blit(wave, (WIDTH // 2 - wave.get_width() // 2, 24))
         surface.blit(wave, (WIDTH // 2 - wave.get_width() // 2, 24))
         if self.music_genre:
             label = self.font_small.render(
