@@ -358,6 +358,8 @@ def check_render_caches() -> None:
     game = Game(seed=71)
     game.start()
     game.wave_intro_time = 0.0
+    assert game.font_hud.get_height() < game.font_small.get_height(), (
+        "HUD score font was not reduced")
 
     # Labels are shared per font/text/colour and never across colours.
     first = game.text(game.font_small, "CACHE TEST", UI_COLOR)

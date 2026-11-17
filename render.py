@@ -872,35 +872,37 @@ class RenderMixin:
     def draw_hud(self, surface: pygame.Surface) -> None:
         # Live record: follows the running score the moment it passes the board.
         best = max(self.leaderboard.best, self.score)
-        best_text = self.text(self.font_small, f"BEST {best:05d}", UI_RECORD)
-        score_text = self.text(self.font_small, f"SCORE {self.score:05d}",
+        best_text = self.text(self.font_hud, f"BEST {best:05d}", UI_RECORD)
+        score_text = self.text(self.font_hud, f"SCORE {self.score:05d}",
                                UI_COLOR)
 
-        # A small dark plate with a light rim sits behind the two live numbers
-        # so they stay readable over any cover art.  Their widths are fixed
-        # (five digits), so the plate can be built once and reused.
+        # A small dark plate sits behind the two live numbers so they stay
+        # readable over any cover art.  Their widths are fixed (five digits),
+        # so the plate can be built once and reused; the old light rim is gone.
+        line_h = self.font_hud.get_height()
+        gap = 1
+        best_y = 2
+        score_y = best_y + line_h + gap
+        plate_h = score_y + line_h + 2
         plate_w = max(best_text.get_width(), score_text.get_width()) + 16
-        if getattr(self, "_hud_plate_w", None) != plate_w:
-            plate = pygame.Surface((plate_w, 44), pygame.SRCALPHA)
+        key = (plate_w, plate_h)
+        if getattr(self, "_hud_plate_key", None) != key:
+            plate = pygame.Surface((plate_w, plate_h), pygame.SRCALPHA)
             pygame.draw.rect(plate, (6, 8, 18, 170),
-                             (0, 0, plate_w, 44), border_radius=7)
-            pygame.draw.rect(plate, (170, 190, 245, 70),
-                             (0, 0, plate_w, 44), width=1, border_radius=7)
-            pygame.draw.line(plate, (210, 225, 255, 45), (8, 1),
-                             (plate_w - 8, 1), 1)
+                             (0, 0, plate_w, plate_h), border_radius=7)
             self._hud_plate = plate
-            self._hud_plate_w = plate_w
+            self._hud_plate_key = key
         surface.blit(self._hud_plate, (LEFT_WALL - 8, 0))
 
         # A 1px shadow on top of the plate keeps the glyph edges crisp.
-        best_shadow = self.text(self.font_small, f"BEST {best:05d}",
+        best_shadow = self.text(self.font_hud, f"BEST {best:05d}",
                                 (10, 10, 20))
-        score_shadow = self.text(self.font_small, f"SCORE {self.score:05d}",
+        score_shadow = self.text(self.font_hud, f"SCORE {self.score:05d}",
                                  (10, 10, 20))
-        surface.blit(best_shadow, (LEFT_WALL + 1, 2))
-        surface.blit(best_text, (LEFT_WALL, 1))
-        surface.blit(score_shadow, (LEFT_WALL + 1, 24))
-        surface.blit(score_text, (LEFT_WALL, 23))
+        surface.blit(best_shadow, (LEFT_WALL + 1, best_y + 1))
+        surface.blit(best_text, (LEFT_WALL, best_y))
+        surface.blit(score_shadow, (LEFT_WALL + 1, score_y + 1))
+        surface.blit(score_text, (LEFT_WALL, score_y))
         wave = self.text(self.font_small, f"WAVE {self.wave}", UI_DIM)
         surface.blit(wave, (WIDTH // 2 - wave.get_width() // 2, 24))
         if self.music_genre:

@@ -193,6 +193,7 @@ class Game(RenderMixin):
         self.font_mid = load_font(28)
         self.font_small = load_font(18)
         self.font_tiny = load_font(15)
+        self.font_hud = load_font(15)
         self.sounds = {
             "shoot": make_tone(880, 70, 0.12),
             "hit": make_tone(220, 90, 0.16),
