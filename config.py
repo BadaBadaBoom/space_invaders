@@ -105,6 +105,9 @@ SHIELD_H = SHIELD_ROWS * SHIELD_CELL
 SHIELD_Y = FLOOR_Y - 148
 SHIELD_TOP_COLOR = (150, 255, 195)
 SHIELD_BOTTOM_COLOR = (55, 150, 115)
+# Boss fights phase the bunkers out so the player has to dodge uncovered.
+SHIELD_BLINK_INTERVAL = (2.2, 3.2)   # seconds between phase-outs
+SHIELD_BLINK_TIME = 0.8              # seconds the bunkers stay gone
 
 # Floating avatar hazards (one sprite sheet, six badges).
 AVATAR_SHEET = Path(os.environ.get(

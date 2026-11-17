@@ -97,6 +97,8 @@ from config import (
     SHAKE_LIFE_LOST,
     SHAKE_RECORD,
     SHAKE_UFO,
+    SHIELD_BLINK_INTERVAL,
+    SHIELD_BLINK_TIME,
     SHIELD_W,
     SHIELD_Y,
     SHIELDS,
@@ -366,6 +368,11 @@ class Game(RenderMixin):
         self.dive_timer = self.rng.uniform(*DIVE_FIRST_DELAY)
         self.shields = self.make_shields()
         self.bunker_cells_total += sum(s.alive_cells() for s in self.shields)
+        # Boss fights phase the bunkers out; ordinary waves keep them solid.
+        self.shields_active = True
+        self.shield_blink_left = 0.0
+        self.shield_blink_wait = (self.rng.uniform(*SHIELD_BLINK_INTERVAL)
+                                  if self.boss is not None else 0.0)
         self.fire_timer = max(0.45, 1.3 - 0.1 * (self.wave - 1))
         self.alien_anim = 0.0
 
@@ -473,6 +480,7 @@ class Game(RenderMixin):
         self.update_aliens(dt)
         self.update_divers(dt)
         self.update_boss(dt)
+        self.update_shields(dt)
         self.update_alien_fire(dt)
         self.update_drifters(dt)
         self.update_ufo(dt)
@@ -582,15 +590,21 @@ class Game(RenderMixin):
         self.alien_anim += dt * (2.0 + 6.0 * (1.0 - len(alive) / (COLS * ROWS)))
 
     def update_divers(self, dt: float) -> None:
-        """Fly any dive-bombers, or count down to the next one."""
+        """Fly any dive-bombers, or count down to the next group."""
         divers = [a for a in self.aliens if a.alive and a.diving]
         if not divers:
+            # Wait for the boss entrance to finish before summoning minions.
+            if self.boss is not None and self.boss_entry > 0:
+                return
             self.dive_timer -= dt
-            if (self.dive_timer <= 0
-                    and len(self.formation_aliens()) > DIVE_MIN_ALIVE):
-                self.start_dive()
-                spread = max(0.55, 1.0 - 0.04 * (self.wave - 1))
-                self.dive_timer = self.rng.uniform(*DIVE_INTERVAL) * spread
+            if self.dive_timer <= 0:
+                if self.boss is not None:
+                    self.start_boss_dive()
+                    self.dive_timer = self.rng.uniform(*DIVE_INTERVAL)
+                elif len(self.formation_aliens()) > DIVE_MIN_ALIVE:
+                    self.start_dive()
+                    spread = max(0.55, 1.0 - 0.04 * (self.wave - 1))
+                    self.dive_timer = self.rng.uniform(*DIVE_INTERVAL) * spread
             return
 
         player = self.player
@@ -651,6 +665,32 @@ class Game(RenderMixin):
             alien.vy = DIVE_START_VY
         self.play("dive")
 
+    def start_boss_dive(self) -> None:
+        """Summon one to five kamikazes at random points around the boss."""
+        count = self.rng.randint(1, DIVE_MAX_GROUP)
+        for _ in range(count):
+            row = self.rng.randrange(ROWS)
+            x = self.rng.uniform(LEFT_WALL + 8, RIGHT_WALL - ALIEN_W - 8)
+            # Keep the portals below the hull so a summoned diver is visible
+            # from the moment it appears instead of hiding behind the boss.
+            y = self.rng.uniform(BOSS_Y + BOSS_H + 10, SHIELD_Y - 90)
+            alien = Alien(
+                col=self.rng.randrange(COLS),
+                row=row,
+                x=x,
+                y=y,
+                diving=True,
+                vx=self.rng.choice((-1, 1)) * self.rng.uniform(40.0, 110.0),
+                vy=DIVE_START_VY,
+            )
+            self.aliens.append(alien)
+            cx, cy = x + ALIEN_W / 2, y + ALIEN_H / 2
+            colour = ROW_COLORS[row % len(ROW_COLORS)]
+            # A brief arrival ring and flash telegraph the portal.
+            self.rings.append([cx, cy, 6.0, 0.34, colour])
+            self.flashes.append([cx, cy, 0.12, 0.12, (255, 255, 255), 18.0])
+        self.play("dive")
+
     def update_boss(self, dt: float) -> None:
         """Hover, sway and volley. The boss never joins a formation march."""
         boss = self.boss
@@ -682,6 +722,27 @@ class Game(RenderMixin):
             if self.boss_raged:
                 interval *= BOSS_RAGE_FIRE_SCALE
             self.boss_volley = interval
+
+    def update_shields(self, dt: float) -> None:
+        """Phase boss-fight bunkers out and back without repairing them."""
+        if self.boss is None:
+            self.shields_active = True
+            self.shield_blink_left = 0.0
+            return
+        if self.boss_entry > 0:
+            # Let the boss arrive behind full cover.
+            return
+        if self.shields_active:
+            self.shield_blink_wait -= dt
+            if self.shield_blink_wait <= 0:
+                self.shields_active = False
+                self.shield_blink_left = SHIELD_BLINK_TIME
+        else:
+            self.shield_blink_left -= dt
+            if self.shield_blink_left <= 0:
+                self.shields_active = True
+                self.shield_blink_wait = self.rng.uniform(
+                    *SHIELD_BLINK_INTERVAL)
 
     def fire_boss_volley(self) -> None:
         """Cycle a hull-wide fan, an aimed triple, and a scattered rain."""
@@ -762,6 +823,15 @@ class Game(RenderMixin):
         self.boss = None
         self.boss_flash = 0.0
         self.alien_bullets.clear()
+        # The boss's summoned kamikazes die with it, and the bunkers return
+        # for the victory beat whether they were phased out or not.
+        for alien in self.aliens:
+            if alien.alive:
+                alien.alive = False
+                self.spawn_sparks(alien.x + ALIEN_W / 2,
+                                  alien.y + ALIEN_H / 2)
+        self.shields_active = True
+        self.shield_blink_left = 0.0
         self.score += boss.points
         cx, cy = boss.x + BOSS_W / 2, boss.y + BOSS_H / 2
         self.spawn_popup(cx, boss.y, f"+{boss.points}", BOSS_LIGHT)
@@ -1003,12 +1073,13 @@ class Game(RenderMixin):
             self._bounce_drifter(d, group)
 
         # Bunkers take a bite and deflect the badge.
-        rect = d.rect()
-        for s in self.shields:
-            bounds = s.bounds()
-            if bounds.colliderect(rect) and s.erase_rect(rect):
-                self._bounce_drifter(d, bounds)
-                rect = d.rect()
+        if self.shields_active:
+            rect = d.rect()
+            for s in self.shields:
+                bounds = s.bounds()
+                if bounds.colliderect(rect) and s.erase_rect(rect):
+                    self._bounce_drifter(d, bounds)
+                    rect = d.rect()
 
         # Hitting the player kills the player and the badge. Do this last:
         # player_hit() clears all bullets.
@@ -1199,8 +1270,10 @@ class Game(RenderMixin):
 
         # Aliens marching down through a bunker chew a hole in it.  The
         # shields' bounds stay fixed for the whole pass, so build them once
-        # instead of recreating four Rects for every alien.
-        shield_bounds = [(s, s.bounds()) for s in self.shields]
+        # instead of recreating four Rects for every alien.  A phased-out
+        # bunker is not there to be chewed.
+        shield_bounds = ([(s, s.bounds()) for s in self.shields]
+                         if self.shields_active else [])
         for a in self.aliens:
             if not a.alive:
                 continue
@@ -1213,6 +1286,8 @@ class Game(RenderMixin):
 
     def damage_shield(self, rect: pygame.Rect, vy: float,
                       by_player: bool = False) -> bool:
+        if not self.shields_active:
+            return False
         for s in self.shields:
             cell = s.hit_cell(rect, vy)
             if cell is not None:

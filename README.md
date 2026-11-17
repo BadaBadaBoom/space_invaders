@@ -322,7 +322,7 @@ Every fifth wave fields one wide machine instead of the formation. A longer
 above the arena** over 1 second. It cannot fire until it settles, and its
 health bar and `SENTINEL 1` nameplate only appear once it is in place. After
 that it hovers near the top, swaying ±46 px, never marches, never drops toward
-the landing line, and brings no escorts.
+the landing line, and brings no formation escorts.
 
 - **Health** scales with the boss number — 30 hits on wave 5, 42 on wave 10,
   54 on wave 15 — shown as a segmented bar above the hull that turns red in
@@ -332,6 +332,15 @@ the landing line, and brings no escorts.
   three-shot volley aimed at your current position (its bullets lean
   horizontally to reach a ship at either wall), and a six-shot rain scattered
   across the arena at mixed speeds.
+- **Kamikaze summons**: between volleys the boss can open one to five random
+  portals in the arena below its hull. Each spits out a diving alien that
+  steers like an ordinary dive-bomber; they can be shot for their row's
+  points, and they all die with the boss.
+- **Phasing bunkers**: every 2–3 seconds the bunkers blink out for
+  `SHIELD_BLINK_TIME` (0.8 s). While phased they neither block bullets nor
+  take damage; when they return they keep the exact craters they had before.
+  The boss entrance is protected by solid cover, and the bunkers return for
+  the victory beat.
 - **Overdrive** starts the moment the hull crosses half health: the palette
   flashes to warning reds, the `SENTINEL` nameplate gains `// OVERDRIVE`, the
   arena shakes, a ring and sparks burst off the hull, and its sway and volley
@@ -445,8 +454,8 @@ present loop roughly halved, with the draw pass about twice as fast.
 - **Power-up capsules**: some alien kills drop a falling capsule for rapid
   fire, triple shot or a bunker repair
 - **A boss every fifth wave**: a warning card, a slide-in entrance, a
-  `SENTINEL` nameplate, a ghost-drained HP bar, three fire patterns, and an
-  overdrive phase below half health
+  `SENTINEL` nameplate, a ghost-drained HP bar, three fire patterns, kamikaze
+  summons, phasing bunkers, and an overdrive phase below half health
 - 3 lives; a hit bursts the ship where it actually died, pulses a red edge
   vignette and blinks the lost life icon as the replacement ship arrives
 - **A dash**: double-tap a direction for an invulnerable 126 px burst that
@@ -564,7 +573,8 @@ leaving the arena, collisions, dash-through and points), power-up capsules
 (drop rate, falling, pickup, both timed boosts and repair), boss waves
 (warning card, entry slide
 and fire lock, scaling, sway bounds, all three volleys, damage, ghost health,
-the overdrive trigger, kill payout and victory pause), the dash (double-tap
+the overdrive trigger, kamikaze summons, phasing bunkers that keep their
+damage, kill payout and victory pause), the dash (double-tap
 window, burst over held input, wall clamp, cooldown, invulnerability and
 dash-through kills), the flow beats (wave cards freeze and release the sim, the
 `+100` bonus lands after the card, the death burst and red vignette fire, the
@@ -618,7 +628,9 @@ Power-up capsules use `POWERUP_DROP_CHANCE`, `POWERUP_FALL_SPEED`,
 
 The boss is tuned by `BOSS_EVERY`, `BOSS_ENTRY_TIME`, `BOSS_HP_BASE`/`STEP`,
 `BOSS_SCORE_BASE`/`STEP`, `BOSS_SWAY`/`SWAY_SPEED`, `BOSS_FIRE_MIN`/`MAX`,
-`BOSS_RAGE_FIRE_SCALE`/`BOSS_RAGE_SWAY_SCALE` and `BOSS_VOLLEY_SPEED`.
+`BOSS_RAGE_FIRE_SCALE`/`BOSS_RAGE_SWAY_SCALE` and `BOSS_VOLLEY_SPEED`. Its
+kamikaze summons reuse `DIVE_MAX_GROUP` and the dive steering constants;
+bunker phasing uses `SHIELD_BLINK_INTERVAL` and `SHIELD_BLINK_TIME`.
 
 The dash uses `DASH_TAP_WINDOW` (double-tap window), `DASH_SPEED`, `DASH_TIME`
 and `DASH_COOLDOWN`.

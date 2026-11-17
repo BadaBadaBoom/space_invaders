@@ -62,8 +62,10 @@ from config import (
     ROW_POINTS,
     ROWS,
     RECORD_BANNER_TIME,
+    SHIELD_BLINK_TIME,
     SHIELD_COLS,
     SHIELD_ROWS,
+    SHIELD_Y,
     SHIELDS,
     SHAKE_DRIFTER,
     SHAKE_LIFE_LOST,
@@ -84,7 +86,7 @@ from config import (
     WIDTH,
 )
 from deps import metal, np
-from entities import Bullet, Drifter, PowerUp, Shield, Ufo
+from entities import Alien, Bullet, Drifter, PowerUp, Shield, Ufo
 from game import Game
 from leaderboard import Leaderboard, _score_order
 from render import alien_look
@@ -115,6 +117,7 @@ def selftest(seconds: float) -> int:
     check_ufo()
     check_powerups()
     check_boss()
+    check_boss_hazards()
     check_dash()
     check_divers()
     check_feedback()
@@ -875,6 +878,81 @@ def check_boss() -> None:
     assert game.wave == 6, "wave did not advance after the boss died"
     assert game.boss is None and game.alive_aliens()
     assert game.powerups, "the reward capsule died with the wave change"
+
+
+def check_boss_hazards() -> None:
+    """Boss fights summon kamikazes and phase bunkers without repairing them."""
+    game = Game(seed=81)
+    game.start()
+    game.wave = 5
+    game.spawn_wave()
+    game.update_boss(BOSS_ENTRY_TIME)
+    assert game.boss is not None and game.boss_entry == 0.0
+    assert game.shields_active
+
+    # Pre-damage a bunker, phase all of them out, and verify bullets pass
+    # through while every cell survives the round trip.
+    shield = game.shields[0]
+    shield.damage(6, 11)
+    damaged = shield.alive_cells()
+    assert damaged < shield.intact, "test did not damage the bunker"
+    snapped = [bytes(row) for row in shield.cells]
+    game.shield_blink_wait = 0.0
+    game.update_shields(1 / 60)
+    assert not game.shields_active, "bunkers did not phase out"
+    game.draw(game.canvas)
+    bullet = Bullet(shield.x + 10, shield.y + 10,
+                    ALIEN_BULLET_SPEED, False)
+    assert not game.damage_shield(bullet.sweep_rect(), bullet.vy), (
+        "a phased bunker blocked a bullet")
+    assert [bytes(row) for row in shield.cells] == snapped, (
+        "a phased bunker took damage")
+    intruder = Alien(0, 0, shield.x, shield.y, diving=True,
+                     vy=DIVE_START_VY)
+    game.aliens = [intruder]
+    game.check_collisions()
+    assert [bytes(row) for row in shield.cells] == snapped, (
+        "a phased bunker was chewed by a diver")
+    game.aliens = []
+    game.update_shields(SHIELD_BLINK_TIME + 0.001)
+    assert game.shields_active, "bunkers never returned"
+    assert shield.alive_cells() == damaged, "blinking repaired the bunker"
+
+    # Boss groups use the same 1..5 range, from random points in the upper
+    # arena, and all of them attack together.
+    sizes = set()
+    for _ in range(80):
+        game.aliens = []
+        game.start_boss_dive()
+        sizes.add(len(game.aliens))
+        for alien in game.aliens:
+            assert LEFT_WALL <= alien.x <= RIGHT_WALL - ALIEN_W
+            assert BOSS_Y + BOSS_H < alien.y < SHIELD_Y
+            assert alien.diving and alien.vy == DIVE_START_VY
+    assert sizes == set(range(1, DIVE_MAX_GROUP + 1)), (
+        f"boss dive groups were {sorted(sizes)}")
+    game.rings.clear()
+    game.flashes.clear()
+    game.debris.clear()
+
+    game.aliens = []
+    game.dive_timer = 0.0
+    game.update_divers(1 / 60)
+    summoned = [a for a in game.aliens if a.alive and a.diving]
+    assert 1 <= len(summoned) <= DIVE_MAX_GROUP
+    positions = [(a.x, a.y) for a in summoned]
+    game.update_divers(1 / 60)
+    for alien, (x, y) in zip(summoned, positions):
+        assert (alien.x, alien.y) != (x, y), "summoned kamikaze did not move"
+
+    # Killing the boss clears its summons and restores the bunkers.
+    boss = game.boss
+    assert boss is not None
+    boss.hp = 1
+    game.damage_boss()
+    assert game.boss is None
+    assert game.shields_active, "boss death left the bunkers phased out"
+    assert not any(a.alive for a in game.aliens), "summons survived the boss"
 
 
 def check_dash() -> None:

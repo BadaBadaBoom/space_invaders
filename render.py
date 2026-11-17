@@ -672,6 +672,8 @@ class RenderMixin:
                              bar.y - label.get_height() - 3))
 
     def draw_shields(self, surface: pygame.Surface) -> None:
+        if not getattr(self, "shields_active", True):
+            return
         for s in self.shields:
             s.draw(surface)
 
@@ -890,6 +892,9 @@ class RenderMixin:
         # ranks have been thinned out.  8x4 cells of 4px with a 1px gutter fit
         # under the score without reaching the playfield.
         for a in self.aliens:
+            if a.diving and self.boss is not None:
+                # Boss summons never join the formation map.
+                continue
             cell = 4
             x = LEFT_WALL + a.col * (cell + 1)
             y = 45 + a.row * (cell + 1)
