@@ -354,14 +354,18 @@ def main() -> int:
             label = game.font_small.render(hint, True, UI_DIM)
             game.canvas.blit(label, (RIGHT_WALL - label.get_width(),
                                      HEIGHT - 19))
-        # The NASA story card stays crisp: keep a pre-CRT copy and put it back.
-        panel = getattr(game, "story_panel_rect", None)
-        clean_panel = None
-        if panel is not None and crt.preset != "off" and crt.intensity > 0:
-            clean_panel = game.canvas.subsurface(panel).copy()
+        # Keep the NASA story card and the top-left BEST/SCORE plate crisp:
+        # copy them before the CRT pass and put them back afterwards.
+        clean_panels = []
+        if crt.preset != "off" and crt.intensity > 0:
+            for rect in (getattr(game, "story_panel_rect", None),
+                         getattr(game, "hud_plate_rect", None)):
+                if rect is not None:
+                    clean_panels.append(
+                        (rect, game.canvas.subsurface(rect).copy()))
         crt.apply_inplace(game.canvas, t=pygame.time.get_ticks() / 1000)
-        if clean_panel is not None and panel is not None:
-            game.canvas.blit(clean_panel, panel.topleft)
+        for rect, panel in clean_panels:
+            game.canvas.blit(panel, rect.topleft)
         game.present(screen)
         pygame.display.flip()
 

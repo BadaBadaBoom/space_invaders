@@ -315,6 +315,17 @@ def check_render_caches() -> None:
     assert game.alien_sprite(ROW_COLORS[1], 1, look) is not sprite
     assert sprite.get_size() == (ALIEN_W, ALIEN_H + 3)
 
+    # The BEST/SCORE plate exposes its clean-CRT region while the HUD is up,
+    # and clears it on screens without that HUD.
+    game.draw(game.canvas)
+    hud = game.hud_plate_rect
+    assert hud is not None, "playing frame did not report its HUD plate"
+    assert hud.topleft == (LEFT_WALL - 8, 0) and hud.height == 44
+    game.state = "title"
+    game.draw(game.canvas)
+    assert game.hud_plate_rect is None, "title frame kept a stale HUD plate"
+    game.state = "playing"
+
     # A cover is composited with the gradient once; the fading cover gets its
     # own cached composite, and the cache never keeps more than two covers.
     old_cover = pygame.Surface((WIDTH, HEIGHT))

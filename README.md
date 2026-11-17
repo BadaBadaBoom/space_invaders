@@ -417,7 +417,9 @@ a brief on-screen hint. `[` and `]` scale the active preset's strength from 0%
 to 100% in 10% steps. The defaults are `CRT_DEFAULT = "medium"` and
 `CRT_INTENSITY = 1.0` in `config.py`; the runtime choice is not persisted. The
 pass runs on the 800×600 canvas, so its cost stays fixed regardless of window
-size, and `off` or 0% intensity skips it entirely.
+size, and `off` or 0% intensity skips it entirely. The top-left `BEST` /
+`SCORE` plate is kept crisp by restoring its pre-CRT pixels after the pass,
+while the rest of the playfield gets the full filter.
 
 ## Rendering caches
 
