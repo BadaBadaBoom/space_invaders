@@ -555,6 +555,7 @@ def check_dash() -> None:
     assert game.tap(1, 100.0 + DASH_TAP_WINDOW / 2), "double tap did not dash"
     assert player.dash_time > 0 and player.dash_cooldown > 0
     assert player.dash_dir == 1
+    game.draw(game.canvas)      # the shield must paint without raising
 
     # The burst wins over held movement.
     start_x = player.x
@@ -579,6 +580,33 @@ def check_dash() -> None:
     player.dash_time = 0.0
     assert not game.tap(-1, 200.0)
     assert not game.tap(-1, 200.0 + DASH_TAP_WINDOW + 0.01)
+
+    # The burst is invulnerable: bullets pass through it.
+    player.dash_time = DASH_TIME
+    player.dash_dir = 1
+    player.invulnerable = 0.0
+    lives = game.lives
+    game.alien_bullets = [Bullet(player.center_x, player.y,
+                                 ALIEN_BULLET_SPEED, False)]
+    game.check_collisions()
+    assert game.lives == lives, "dashed through a bullet and died"
+    assert game.alien_bullets, "the dash swallowed the bullet"
+
+    # Dashing through a badge destroys it without costing a life.
+    badge = Drifter(pygame.Surface((DRIFTER_SIZE, DRIFTER_SIZE)),
+                    [(255, 0, 0)], player.x, player.y, 0, 0)
+    game.drifters = [badge]
+    player.dash_time = DASH_TIME
+    game.check_drifter_collisions(badge)
+    assert game.drifters == [], "badge survived a dash-through"
+    assert game.lives == lives, "dash-through killed the ship"
+
+    # Once the burst ends, contact hurts again.
+    player.dash_time = 0.0
+    game.alien_bullets = [Bullet(player.center_x, player.y,
+                                 ALIEN_BULLET_SPEED, False)]
+    game.check_collisions()
+    assert game.lives == lives - 1, "i-frames outlived the dash"
 
     # And it is only available during active play.
     game.state = "paused"

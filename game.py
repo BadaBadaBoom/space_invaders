@@ -717,7 +717,8 @@ class Game(RenderMixin):
         # player_hit() clears all bullets.
         if d.rect().colliderect(self.player.rect()):
             killed = True
-            if self.player.invulnerable <= 0:
+            if (self.player.invulnerable <= 0
+                    and self.player.dash_time <= 0):
                 self.player_hit()
 
         if killed:
@@ -885,7 +886,9 @@ class Game(RenderMixin):
             path = b.sweep_rect()
             if self.damage_shield(path, b.vy, by_player=False):
                 continue
-            if self.player.invulnerable <= 0 and path.colliderect(player_rect):
+            if (self.player.invulnerable <= 0
+                    and self.player.dash_time <= 0
+                    and path.colliderect(player_rect)):
                 self.play("boom")
                 self.player_hit()
             else:

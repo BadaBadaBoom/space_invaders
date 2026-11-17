@@ -120,8 +120,11 @@ and painted backdrops, but no soundtrack.
 | `Esc` | Leave fullscreen, or quit |
 
 The dash ignores held movement for its 0.14 s burst, so it works as an
-escape even while you are pressing the other way. A pair of chevrons beside
-the fleet map goes bright when it is ready and dims while it recharges.
+escape even while you are pressing the other way, and the burst is
+**invulnerable** — a glowing shield wraps the ship, bullets pass through it,
+and dashing into a floating badge destroys the badge instead of you. A pair
+of chevrons beside the fleet map goes bright when it is ready and dims while
+it recharges.
 
 ## The soundtrack
 
@@ -364,8 +367,9 @@ size, and `off` or 0% intensity skips it entirely.
 - **A boss every fifth wave**: a wide machine with a segmented HP bar, three
   fire patterns and no formation march
 - 3 lives, brief invulnerability (the ship flashes) after a hit
-- **A dash**: double-tap a direction for a 126 px burst that overrides held
-  movement, on a 1.2 s cooldown — the answer to a badge drifting into your lane
+- **A dash**: double-tap a direction for an invulnerable 126 px burst that
+  overrides held movement, on a 1.2 s cooldown — the answer to a badge
+  drifting into your lane
 - Endless waves: each cleared wave pays a bonus and starts faster
 - Game over when you run out of lives **or** the formation reaches the landing line
 - Title, pause, and game-over screens; starfield plus a fresh 1960s cover
@@ -464,7 +468,8 @@ and bullet-only kills),
 power-up capsules (drop rate, falling, pickup, both timed boosts and repair),
 boss waves (spawning, scaling, sway bounds, all three volleys, damage, the
 kill payout and the victory pause),
-the dash (double-tap window, burst over held input, wall clamp, cooldown),
+the dash (double-tap window, burst over held input, wall clamp, cooldown,
+invulnerability and dash-through kills),
 that each wave paints a different backdrop and rotates through every music
 genre without repeats, that the leaderboard keeps 100 sorted entries, reloads
 correctly and records each run once, that shooting statistics follow the

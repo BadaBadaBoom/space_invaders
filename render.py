@@ -18,6 +18,7 @@ from config import (
     BOSS_H,
     BOSS_LIGHT,
     BOSS_W,
+    DASH_TIME,
     FIELD_TOP,
     FLOOR_Y,
     HEIGHT,
@@ -25,6 +26,7 @@ from config import (
     LEFT_WALL,
     PLAYER_BULLET_COLOR,
     PLAYER_COLOR,
+    PLAYER_H,
     PLAYER_W,
     POPUP_RISE,
     POWERUP_COLORS,
@@ -433,11 +435,30 @@ class RenderMixin:
                          border_radius=3)
         pygame.draw.rect(surface, (10, 30, 22), (x + 20, y + 2, 6, 4))
 
+    def draw_dash_shield(self, surface: pygame.Surface, x: int, y: int) -> None:
+        """A glowing bubble around the ship during the invulnerable burst."""
+        pulse = max(0.0, min(1.0, self.player.dash_time / DASH_TIME))
+        w, h = PLAYER_W + 16, PLAYER_H + 18
+        shield = pygame.Surface((w + 24, h + 24), pygame.SRCALPHA)
+        cx, cy = shield.get_width() // 2, shield.get_height() // 2
+        strength = 0.45 + 0.55 * pulse
+        for grow, alpha in ((10, 26), (6, 44), (2, 78)):
+            pygame.draw.ellipse(
+                shield, (140, 240, 255, int(alpha * strength)),
+                (cx - w // 2 - grow, cy - h // 2 - grow,
+                 w + grow * 2, h + grow * 2))
+        pygame.draw.ellipse(shield, (225, 255, 255, int(210 * pulse)),
+                            (cx - w // 2, cy - h // 2, w, h), 2)
+        surface.blit(shield, (x + PLAYER_W // 2 - cx,
+                              y + PLAYER_H // 2 - cy))
+
     def draw_player(self, surface: pygame.Surface) -> None:
         p = self.player
+        x, y = int(p.x), int(p.y)
+        if p.dash_time > 0:
+            self.draw_dash_shield(surface, x, y)
         if p.invulnerable > 0 and int(p.invulnerable * 12) % 2 == 0:
             return
-        x, y = int(p.x), int(p.y)
         if p.dash_time > 0 and p.dash_dir:
             # Warp trail behind the burst.
             for step, ghost in ((1, (86, 170, 124)), (2, (44, 92, 68))):
