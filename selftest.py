@@ -24,6 +24,8 @@ from config import (
     DASH_SPEED,
     DASH_TAP_WINDOW,
     DASH_TIME,
+    DIVE_MAX_VY,
+    DIVE_START_VY,
     DRIFTER_LIFE,
     DRIFTER_POINTS,
     DRIFTER_POINTS_MIN,
@@ -90,6 +92,7 @@ def selftest(seconds: float) -> int:
     check_powerups()
     check_boss()
     check_dash()
+    check_divers()
     check_feedback()
     check_leaderboard()
     check_clear_scores()
@@ -612,6 +615,77 @@ def check_dash() -> None:
     game.state = "paused"
     assert not game.dash(1)
     game.state = "playing"
+
+
+def check_divers() -> None:
+    """An occasional alien peels off the formation and dives at the ship."""
+    game = Game(seed=71)
+    game.start()
+    assert not any(alien.diving for alien in game.aliens)
+    assert game.dive_timer > 0
+
+    # The timer launches exactly one diver, out of the formation.
+    game.dive_timer = 0.0
+    game.update_divers(0.0)
+    divers = [alien for alien in game.aliens if alien.diving]
+    assert len(divers) == 1, f"{len(divers)} divers launched"
+    diver = divers[0]
+    assert diver not in game.formation_aliens()
+    assert diver.vy >= DIVE_START_VY
+
+    # The formation march must leave it behind.
+    x, y = diver.x, diver.y
+    game.update_aliens(1 / 60)
+    assert (diver.x, diver.y) == (x, y), "formation march moved a diver"
+
+    # It descends and steers toward the ship.
+    game.player.x = LEFT_WALL
+    diver.x = RIGHT_WALL - ALIEN_W
+    diver.vx = 0.0
+    for _ in range(30):
+        game.update_divers(1 / 60)
+    assert diver.y > y, "diver did not descend"
+    assert diver.x < RIGHT_WALL - ALIEN_W, "diver did not steer left"
+
+    # Leaving the arena removes it without costing a life.
+    lives = game.lives
+    diver.y = FLOOR_Y - 1
+    diver.vy = DIVE_MAX_VY
+    game.update_divers(0.1)
+    assert not diver.alive and game.lives == lives
+
+    # Reaching the ship costs a life.
+    game = Game(seed=71)
+    game.start()
+    game.player.invulnerable = 0.0
+    lives = game.lives
+    victim = game.aliens[0]
+    victim.diving = True
+    victim.x, victim.y = game.player.x, game.player.y
+    game.update_divers(1 / 60)
+    assert not victim.alive and game.lives == lives - 1
+
+    # ...unless the ship is mid-dash, which kills the diver instead.
+    game = Game(seed=71)
+    game.start()
+    lives = game.lives
+    victim = game.aliens[0]
+    victim.diving = True
+    victim.x, victim.y = game.player.x, game.player.y
+    game.player.dash_time = DASH_TIME
+    game.update_divers(1 / 60)
+    assert not victim.alive and game.lives == lives
+
+    # Divers are still worth their row's points when shot.
+    game = Game(seed=71)
+    game.start()
+    target = game.aliens[0]
+    target.diving = True
+    target.x, target.y = 400, 300
+    game.player_bullets = [Bullet(405, 305, -PLAYER_BULLET_SPEED, True)]
+    game.check_collisions()
+    assert not target.alive, "diver was not shootable"
+    assert game.score == ROW_POINTS[target.row]
 
 
 def check_feedback() -> None:

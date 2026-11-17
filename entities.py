@@ -75,6 +75,9 @@ class Alien:
     x: float
     y: float
     alive: bool = True
+    diving: bool = False
+    vx: float = 0.0
+    vy: float = 0.0
 
     def rect(self) -> pygame.Rect:
         return pygame.Rect(int(self.x), int(self.y), ALIEN_W, ALIEN_H)

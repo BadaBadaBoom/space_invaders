@@ -38,6 +38,14 @@ from config import (
     DASH_SPEED,
     DASH_TAP_WINDOW,
     DASH_TIME,
+    DIVE_ACCEL,
+    DIVE_FIRST_DELAY,
+    DIVE_INTERVAL,
+    DIVE_MAX_VY,
+    DIVE_MIN_ALIVE,
+    DIVE_SPEED_X,
+    DIVE_START_VY,
+    DIVE_TURN,
     DRIFTER_LIFE,
     DRIFTER_RESPAWN,
     DRIFTER_SPAWN_DELAY,
@@ -126,6 +134,7 @@ class Game(RenderMixin):
             "blast": make_tone(82, 320, 0.22),
             "power": make_tone(1046, 120, 0.14),
             "dash": make_tone(520, 55, 0.10),
+            "dive": make_tone(1150, 90, 0.12),
             "wail": make_wail(1900, 620, 420, 0.24),
         }
         # Pre-render the beat-the-record boom once per Game instance, never
@@ -227,6 +236,7 @@ class Game(RenderMixin):
         self.flashes: list[list[float]] = []
         self.drifters: list[Drifter] = []
         self.drifter_timer = DRIFTER_SPAWN_DELAY
+        self.dive_timer = self.rng.uniform(*DIVE_FIRST_DELAY)
         self.shields = self.make_shields()
         self.bunker_cells_total += sum(s.alive_cells() for s in self.shields)
         self.fire_timer = max(0.45, 1.3 - 0.1 * (self.wave - 1))
@@ -280,6 +290,9 @@ class Game(RenderMixin):
     def alive_aliens(self) -> list[Alien]:
         return [a for a in self.aliens if a.alive]
 
+    def formation_aliens(self) -> list[Alien]:
+        return [a for a in self.aliens if a.alive and not a.diving]
+
     def formation_speed(self) -> float:
         alive = self.alive_aliens()
         frac = len(alive) / (COLS * ROWS)
@@ -294,6 +307,7 @@ class Game(RenderMixin):
         self.update_player(dt, move, fire)
         self.update_bullets(dt)
         self.update_aliens(dt)
+        self.update_divers(dt)
         self.update_boss(dt)
         self.update_alien_fire(dt)
         self.update_drifters(dt)
@@ -379,7 +393,7 @@ class Game(RenderMixin):
         ]
 
     def update_aliens(self, dt: float) -> None:
-        alive = self.alive_aliens()
+        alive = self.formation_aliens()
         if not alive:
             return
         step = self.direction * self.formation_speed() * dt
@@ -396,6 +410,49 @@ class Game(RenderMixin):
 
         # Marching animation: faster as the formation thins out.
         self.alien_anim += dt * (2.0 + 6.0 * (1.0 - len(alive) / (COLS * ROWS)))
+
+    def update_divers(self, dt: float) -> None:
+        """Fly any dive-bombers, or count down to the next one."""
+        divers = [a for a in self.alive_aliens() if a.diving]
+        if not divers:
+            self.dive_timer -= dt
+            if (self.dive_timer <= 0
+                    and len(self.formation_aliens()) > DIVE_MIN_ALIVE):
+                self.start_dive()
+                spread = max(0.55, 1.0 - 0.04 * (self.wave - 1))
+                self.dive_timer = self.rng.uniform(*DIVE_INTERVAL) * spread
+            return
+
+        player = self.player
+        for alien in divers:
+            desired = clamp((player.center_x - (alien.x + ALIEN_W / 2)) * 2.2,
+                            -DIVE_SPEED_X, DIVE_SPEED_X)
+            alien.vx += (desired - alien.vx) * min(1.0, dt * DIVE_TURN)
+            alien.vy = min(DIVE_MAX_VY, alien.vy + DIVE_ACCEL * dt)
+            alien.x = clamp(alien.x + alien.vx * dt, LEFT_WALL,
+                            RIGHT_WALL - ALIEN_W)
+            alien.y += alien.vy * dt
+            if alien.y > FLOOR_Y:
+                # It missed and left the arena.
+                alien.alive = False
+                self.spawn_sparks(alien.x + ALIEN_W / 2, FLOOR_Y - 4)
+                continue
+            if alien.rect().colliderect(player.rect()):
+                alien.alive = False
+                self.spawn_debris(alien)
+                if player.invulnerable <= 0 and player.dash_time <= 0:
+                    self.player_hit()
+
+    def start_dive(self) -> None:
+        """Peel one formation alien out into a kamikaze run at the ship."""
+        candidates = self.formation_aliens()
+        if not candidates:
+            return
+        alien = self.rng.choice(candidates)
+        alien.diving = True
+        alien.vx = self.rng.choice((-1, 1)) * self.rng.uniform(40.0, 110.0)
+        alien.vy = DIVE_START_VY
+        self.play("dive")
 
     def update_boss(self, dt: float) -> None:
         """Hover, sway and volley. The boss never joins a formation march."""
@@ -491,7 +548,7 @@ class Game(RenderMixin):
 
         # Only the front-most alien of a column can shoot.
         columns: dict[int, Alien] = {}
-        for a in self.alive_aliens():
+        for a in self.formation_aliens():
             current = columns.get(a.col)
             if current is None or a.y > current.y:
                 columns[a.col] = a
@@ -943,7 +1000,7 @@ class Game(RenderMixin):
                                 (140, 255, 190), 2])
 
     def lowest_alien_y(self) -> float:
-        alive = self.alive_aliens()
+        alive = self.formation_aliens()
         return max((a.y for a in alive), default=0.0)
 
     def player_hit(self) -> None:

@@ -244,6 +244,19 @@ a screen jolt and its own descending, vibrato'd wail instead of the usual
 short blast; a miss costs nothing and the next one is scheduled about 25
 seconds later.
 
+## Dive-bombers
+
+Every 4–8 seconds one alien peels out of the formation, stops marching and
+steers toward your ship, accelerating as it falls. It stops counting as part
+of the formation — the march keeps moving without it, and it can no longer
+shoot or trigger the landing line.
+
+Shoot it for its row's points, dash through it to destroy it safely, or let it
+reach you and lose a life; if it misses it leaves the bottom of the arena with
+a spray of sparks. Dives stop once the wave is down to eight aliens, and the
+gap between them tightens as the waves climb. A short high chirp marks each
+launch.
+
 ## Power-ups
 
 Roughly one alien kill in fourteen leaves a capsule falling at 95 px/s. Catch
@@ -362,6 +375,8 @@ size, and `off` or 0% intensity skips it entirely.
   ship can destroy them
 - **A mystery UFO** (see below) crossing the top of the arena every ~25 s,
   worth 50–300 points and hittable only through a cleared column
+- **Dive-bombers** (see below): every few seconds one alien peels out of the
+  formation and swoops at you, steering as it falls
 - **Power-up capsules**: some alien kills drop a falling capsule for rapid
   fire, triple shot or a bunker repair
 - **A boss every fifth wave**: a wide machine with a segmented HP bar, three
@@ -465,6 +480,8 @@ and checking bunker erosion, letterboxed scaling at several resolutions, the
 avatar hazards (bouncing, every collision type, explosion effects, spawning),
 the mystery UFO (spawn timing, crossing, payout, its death shake and wail,
 and bullet-only kills),
+dive-bombers (launch, steering, leaving the arena, collisions, dash-through
+and points),
 power-up capsules (drop rate, falling, pickup, both timed boosts and repair),
 boss waves (spawning, scaling, sway bounds, all three volleys, damage, the
 kill payout and the victory pause),
@@ -492,6 +509,9 @@ limit is the wave number (set in `Game.update_drifters`).
 
 The saucer is tuned by `UFO_SPEED_MIN`/`MAX`, `UFO_FIRST_DELAY`, `UFO_RESPAWN`
 and `UFO_POINTS` in `config.py`.
+
+Dive-bombers use `DIVE_FIRST_DELAY`, `DIVE_INTERVAL`, `DIVE_MIN_ALIVE`,
+`DIVE_SPEED_X`, `DIVE_START_VY`/`MAX_VY`, `DIVE_ACCEL` and `DIVE_TURN`.
 
 Power-up capsules use `POWERUP_DROP_CHANCE`, `POWERUP_FALL_SPEED`,
 `POWERUP_RAPID_SCALE`/`TIME`, `POWERUP_TRIPLE_TIME`, and the

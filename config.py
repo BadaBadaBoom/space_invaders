@@ -117,6 +117,16 @@ POWERUP_COLORS = {
 }
 POWERUP_LABELS = {"rapid": "R", "triple": "T", "repair": "B"}
 
+# Dive-bombers: every so often one formation alien peels off to kamikaze.
+DIVE_FIRST_DELAY = (4.0, 7.5)
+DIVE_INTERVAL = (5.0, 8.5)
+DIVE_MIN_ALIVE = 8          # don't dive when the wave is nearly cleared
+DIVE_SPEED_X = 220.0
+DIVE_START_VY = 110.0
+DIVE_MAX_VY = 330.0
+DIVE_ACCEL = 240.0
+DIVE_TURN = 2.5             # how quickly a dive turns toward the ship
+
 # Boss wave: every fifth wave a single wide machine replaces the formation.
 BOSS_EVERY = 5
 BOSS_W, BOSS_H = 132, 58
