@@ -14,6 +14,7 @@ from assets import (
     make_pulp_background,
     make_tone,
     make_wail,
+    make_wave_stinger,
 )
 from config import (
     ALIEN_BULLET_SPEED,
@@ -179,7 +180,7 @@ class Game(RenderMixin):
             "shoot": make_tone(880, 70, 0.12),
             "hit": make_tone(220, 90, 0.16),
             "boom": make_tone(120, 260, 0.20),
-            "wave": make_tone(660, 140, 0.14),
+            "wave": make_wave_stinger(0.22),
             "clank": make_tone(330, 45, 0.10),
             "blast": make_tone(82, 320, 0.22),
             "power": make_tone(1046, 120, 0.14),

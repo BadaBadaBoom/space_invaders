@@ -73,6 +73,13 @@ def read_input() -> tuple[int, bool]:
     return move, keys[pygame.K_SPACE]
 
 
+def music_intensity(wave: int) -> float:
+    """Scale soundtrack urgency with the wave number (0.0 early, 1.0 late)."""
+    # Boss waves get an extra kick; intensity caps at 1.0.
+    boss_bonus = 0.18 if wave % 5 == 0 else 0.0
+    return min(1.0, (wave - 1) / 9.0 + boss_bonus)
+
+
 def skip_song(player: MusicPlayer, game: Game) -> None:
     """Skip to a new genre and keep the wave's planned genre in sync."""
     player.next_track()
@@ -81,7 +88,7 @@ def skip_song(player: MusicPlayer, game: Game) -> None:
     game.music_genre = player.genre
     if game.next_music_genre == game.music_genre:
         game.next_music_genre = game.choose_music_genre()
-    player.prepare(game.next_music_genre)
+    player.prepare(game.next_music_genre, music_intensity(game.wave + 1))
 
 
 def main() -> int:
@@ -147,7 +154,7 @@ def main() -> int:
     # The title screen gets a track while the game is being set up; every
     # new game and every new wave composes another one.  The first NASA
     # story is fetched at the same time so the first game over is ready.
-    music_player.request()
+    music_player.request(intensity=0.3)
     news_feed.begin_round()
     last_wave = game.wave
 
@@ -232,8 +239,10 @@ def main() -> int:
                     game.start()
                     story_assigned = False
                     news_feed.begin_round()
-                    music_player.request(game.music_genre)
-                    music_player.prepare(game.next_music_genre)
+                    music_player.request(game.music_genre,
+                                         music_intensity(game.wave))
+                    music_player.prepare(game.next_music_genre,
+                                         music_intensity(game.wave + 1))
                     last_wave = game.wave
                 elif event.key == pygame.K_p:
                     game.toggle_pause()
@@ -271,8 +280,10 @@ def main() -> int:
             game.update_effects(dt)
             if game.wave != last_wave:
                 last_wave = game.wave
-                music_player.request(game.music_genre)
-                music_player.prepare(game.next_music_genre)
+                music_player.request(game.music_genre,
+                                     music_intensity(game.wave))
+                music_player.prepare(game.next_music_genre,
+                                     music_intensity(game.wave + 1))
 
         # The story was fetched during the run; pin it to this game over and
         # start looking for the next one during the following game.

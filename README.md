@@ -135,6 +135,13 @@ channel and crossfaded in. The next wave's genre is chosen one wave ahead and
 rendered while the current track plays, so the change is ready when the next
 wave starts.
 
+The soundtrack also gets **more urgent as you advance**: higher waves run at a
+slightly faster tempo, get busier drum fills and push the lead/bus levels a
+little harder.  A short three-note fanfare plays each time you clear a wave,
+sitting on top of the crossfade.  Track length is tuned by `MUSIC_SHORTEN` in
+`config.py` so the worker reliably finishes the next song before you clear the
+current wave.
+
 Every wave gets a different **genre**, drawn from a shuffled bag so all seven
 play before any repeats, and two waves in a row never share one:
 
@@ -332,8 +339,9 @@ misregistration, a fold crease, foxing spots and a vignette.
 
 The finished cover is dimmed to alpha 58–76, so it sits behind the aliens,
 avatars, bullets and bunkers without harming readability. A new one is painted
-at each wave start and takes roughly 0.3–0.5 s. If numpy is unavailable the
-game falls back to a simple gradient backdrop.
+for each wave, but it is rendered on a worker thread so the wave transition
+does not hitch; the previous backdrop stays on screen until the new one lands.
+If numpy is unavailable the game falls back to a simple gradient backdrop.
 
 ## Fullscreen and scaling
 
@@ -540,7 +548,10 @@ time constant in seconds. The floating score numbers use `POPUP_LIFE` and
 Each wave's alien silhouette comes from `alien_look()` in `render.py`, keyed
 on the wave number.
 
-For the music, see the top of `music.py`: `RIFF_RHYTHMS` defines the rhythm
-templates, `Composer._make_sections` and each genre's `sections` define the song
-form, and the `GenreComposer` class attributes (`pans`, `reverb_sends`,
-`delay_sends`, `duck_depth`, `section_levels`) shape the mix and dynamics.
+For the music, `MUSIC_SHORTEN` in `config.py` controls loop length (smaller
+= faster composition and more reliable prefetching).  `RIFF_RHYTHMS` defines
+the rhythm templates, `Composer._make_sections` and each genre's `sections`
+define the song form, and the `GenreComposer` class attributes (`pans`,
+`reverb_sends`, `delay_sends`, `duck_depth`, `section_levels`) shape the mix
+and dynamics.  The intensity passed into `compose()` scales tempo, lead/bus
+levels and drum density so later waves feel more urgent.

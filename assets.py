@@ -205,3 +205,45 @@ def make_wail(start_hz: float, end_hz: float, duration_ms: int,
         return pygame.mixer.Sound(buffer=buf.tobytes())
     except Exception:  # noqa: BLE001 - no mixer means no wail
         return None
+
+
+def make_wave_stinger(volume: float = 0.22,
+                      sample_rate: int = 44100) -> pygame.mixer.Sound | None:
+    """A short triumphant fanfare for clearing a wave.
+
+    Three square-wave notes (root, fifth, octave) sweep upward, followed by a
+    little sparkle.  Like the other blips, this needs no numpy or asset files.
+    """
+    try:
+        init = pygame.mixer.get_init()
+        if not init:
+            return None
+        channels = init[2]
+        rate = init[0] or sample_rate
+        amplitude = int(32767 * volume)
+        buf = array("h")
+
+        notes = [(660, 90), (990, 90), (1320, 180)]
+        for frequency, duration_ms in notes:
+            frames = int(rate * duration_ms / 1000)
+            for i in range(frames):
+                t = i / max(frames, 1)
+                decay = 1.0 - t * 0.5
+                value = int(amplitude * decay)
+                if math.sin(2.0 * math.pi * frequency * i / rate) < 0:
+                    value = -value
+                for _ in range(channels):
+                    buf.append(value)
+        # Short high sparkle on top of the final note.
+        sparkle_frames = int(rate * 80 / 1000)
+        for i in range(sparkle_frames):
+            t = i / max(sparkle_frames, 1)
+            decay = 1.0 - t
+            value = int(amplitude * 0.6 * decay)
+            if math.sin(2.0 * math.pi * (1980 + 800 * t) * i / rate) < 0:
+                value = -value
+            for _ in range(channels):
+                buf.append(value)
+        return pygame.mixer.Sound(buffer=buf.tobytes())
+    except Exception:  # noqa: BLE001 - no mixer means no stinger
+        return None

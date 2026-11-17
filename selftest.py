@@ -1247,7 +1247,7 @@ def check_music_player() -> None:
         GENRES = ("metal", "jazz", "disco")
 
         @staticmethod
-        def compose(seed, genre=None):
+        def compose(seed, shorten=1.0, genre=None, intensity=0.5):
             calls.append(genre)
             return b"\0\0" * 4410
 

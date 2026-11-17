@@ -696,12 +696,16 @@ METAL_SECTION_LEVELS = {
 class Composer:
     """Builds one complete, never-quite-the-same metal track."""
 
-    def __init__(self, seed: int | None = None, shorten: float = 1.0) -> None:
+    def __init__(self, seed: int | None = None, shorten: float = 1.0,
+                 intensity: float = 0.5) -> None:
         self.rng = random.Random(seed)
         self.npr = np.random.default_rng(self.rng.getrandbits(63))
         self.master_seed = self.rng.getrandbits(63)
+        self.intensity = float(np.clip(intensity, 0.0, 1.0))
         r = self.rng
-        self.tempo = r.choice((148, 156, 164, 172, 180))
+        base_tempo = r.choice((148, 156, 164, 172, 180))
+        # Higher waves push the tempo up; lower waves keep it grounded.
+        self.tempo = int(base_tempo * (0.96 + 0.12 * self.intensity))
         self.beat = 60.0 / self.tempo
         self.step = self.beat / 4.0
         self.step_samples = self.step * SR
@@ -909,6 +913,10 @@ class Composer:
 
         if bar == 0 or (section in ("chorus", "solo") and bar == 4):
             at(0, crash(r), 0.9, 0.0)
+        # High-intensity choruses get extra crash hits to push the energy.
+        if (self.intensity > 0.65 and section in ("chorus", "solo")
+                and bar % 2 == 1 and r.random() < 0.55):
+            at(8, crash(r), 0.55, 0.0)
 
         # Fill on the last bar of a section.
         if last_bar and section in ("verse", "chorus", "verse2", "solo"):
@@ -921,8 +929,10 @@ class Composer:
         degrees = [d + 12 for d in self.scale] + [d + 24 for d in self.scale]
         motif: list[list[float]] = []
         step = 0
+        # Higher intensity = busier solo lines.
+        density = 0.65 + 0.30 * self.intensity
         while step < 16:
-            if r.random() < 0.72:
+            if r.random() < density:
                 length = r.choice((1, 1, 2, 2, 3, 4))
                 motif.append([step, length, r.choice(degrees),
                               r.uniform(0.82, 1.05)])
@@ -958,7 +968,7 @@ class Composer:
             _add(self.lead_bus,
                  lead(note, length * self.step * 0.95, self.rng),
                  int((start_step + step) * self.step_samples),
-                 0.9 * velocity * self.gain_scale)
+                 (0.85 + 0.20 * self.intensity) * velocity * self.gain_scale)
 
 
 # --------------------------------------------------------------------------- #
@@ -1005,12 +1015,15 @@ class GenreComposer:
         "groove": 1.0, "groove2": 1.05, "outro": 0.55,
     }
 
-    def __init__(self, seed: int | None = None, shorten: float = 1.0) -> None:
+    def __init__(self, seed: int | None = None, shorten: float = 1.0,
+                 intensity: float = 0.5) -> None:
         r = random.Random(seed)
         self.rng = r
         self.npr = np.random.default_rng(r.getrandbits(63))
         self.master_seed = r.getrandbits(63)
-        self.tempo = r.choice(self.tempos)
+        self.intensity = float(np.clip(intensity, 0.0, 1.0))
+        base_tempo = r.choice(self.tempos)
+        self.tempo = int(base_tempo * (0.96 + 0.12 * self.intensity))
         self.beat = 60.0 / self.tempo
         self.step = self.beat / 4.0
         self.step_samples = self.step * SR
@@ -1051,6 +1064,8 @@ class GenreComposer:
 
     def _make_motif(self, density: float,
                     lengths: tuple[int, ...]) -> list[list[float]]:
+        # Intensity pushes motifs to be a little busier.
+        density = min(0.95, density * (1.0 + 0.18 * self.intensity))
         motif: list[list[float]] = []
         step = 0
         while step < 16:
@@ -1101,7 +1116,8 @@ class GenreComposer:
             note = hz(self.deg(root_deg + degree) + octave)
             offset = swing if step % 4 == 2 else 0.0
             self.add(bus, voice(note, length * self.step * 0.95),
-                     start + step + offset, gain * velocity)
+                     start + step + offset,
+                     gain * velocity * (1.0 + 0.12 * self.intensity))
 
     def riser(self, start: float, duration: float, gain: float = 0.3) -> None:
         self.add("extra", noise_riser(duration, self.npr), start, gain)
@@ -1517,24 +1533,26 @@ def pick_genre(previous: str | None = None,
 # --------------------------------------------------------------------------- #
 
 def compose(seed: int | None = None, shorten: float = 1.0,
-            genre: str | None = None) -> bytes:
+            genre: str | None = None, intensity: float = 0.5) -> bytes:
     """Compose a fresh track and return interleaved int16 stereo at SR.
 
     `genre` is one of GENRES; when omitted a seed-derived genre is chosen.
+    `intensity` in [0, 1] scales tempo, drum density and lead activity so
+    later waves feel more urgent than the early ones.
     """
     if genre not in GENRE_COMPOSERS and genre != "metal":
         genre = random.Random(seed).choice(GENRES)
     if genre == "metal":
-        return Composer(seed, shorten).render()
-    return GENRE_COMPOSERS[genre](seed, shorten).render()
+        return Composer(seed, shorten, intensity).render()
+    return GENRE_COMPOSERS[genre](seed, shorten, intensity).render()
 
 
 def compose_wav(seed: int | None = None, path: str = "track.wav",
-                genre: str | None = None) -> str:
+                genre: str | None = None, intensity: float = 0.5) -> str:
     """Compose a track and write it to a stereo .wav file (for previewing)."""
     import wave
 
-    data = compose(seed, genre=genre)
+    data = compose(seed, genre=genre, intensity=intensity)
     with wave.open(path, "wb") as fh:
         fh.setnchannels(2)
         fh.setsampwidth(2)

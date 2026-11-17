@@ -61,6 +61,10 @@ SHAKE_DECAY = 0.16
 RECORD_BANNER_TIME = 3.0
 RECORD_BANNER_SCROLL = 190.0     # px/s of horizontal marquee travel
 
+# Music: loop length multiplier.  Smaller values compose faster and use less
+# memory, which makes the next-wave prefetch more reliable.  1.0 = full length.
+MUSIC_SHORTEN = 0.75
+
 # Floating "+points" numbers: how long they live and how fast they rise.
 POPUP_LIFE = 0.9
 POPUP_RISE = 34.0
