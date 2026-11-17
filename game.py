@@ -47,6 +47,7 @@ from config import (
     DIVE_ACCEL,
     DIVE_FIRST_DELAY,
     DIVE_INTERVAL,
+    DIVE_MAX_GROUP,
     DIVE_MAX_VY,
     DIVE_MIN_ALIVE,
     DIVE_SPEED_X,
@@ -629,15 +630,25 @@ class Game(RenderMixin):
                 self.rng.choice((2, 3)),
             ])
 
+    def dive_group_size(self) -> int:
+        """How many kamikazes launch together this wave, chosen uniformly.
+
+        Wave 1 sends one; wave 2 has an equal chance of one or two, wave 3
+        adds a third option, and so on up to DIVE_MAX_GROUP from wave 5 on.
+        """
+        upper = min(DIVE_MAX_GROUP, max(1, self.wave))
+        return self.rng.randint(1, upper)
+
     def start_dive(self) -> None:
-        """Peel one formation alien out into a kamikaze run at the ship."""
+        """Peel a group of formation aliens out into a simultaneous dive."""
         candidates = self.formation_aliens()
         if not candidates:
             return
-        alien = self.rng.choice(candidates)
-        alien.diving = True
-        alien.vx = self.rng.choice((-1, 1)) * self.rng.uniform(40.0, 110.0)
-        alien.vy = DIVE_START_VY
+        group = min(self.dive_group_size(), len(candidates))
+        for alien in self.rng.sample(candidates, group):
+            alien.diving = True
+            alien.vx = self.rng.choice((-1, 1)) * self.rng.uniform(40.0, 110.0)
+            alien.vy = DIVE_START_VY
         self.play("dive")
 
     def update_boss(self, dt: float) -> None:

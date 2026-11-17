@@ -28,6 +28,7 @@ from config import (
     DASH_SPEED,
     DASH_TAP_WINDOW,
     DASH_TIME,
+    DIVE_MAX_GROUP,
     DIVE_MAX_VY,
     DIVE_START_VY,
     DRIFTER_LIFE,
@@ -1022,6 +1023,26 @@ def check_divers() -> None:
     game.check_collisions()
     assert not target.alive, "diver was not shootable"
     assert game.score == ROW_POINTS[target.row]
+
+    # Group size grows with the wave: one in wave 1, an extra equal-chance
+    # option per wave up to five simultaneous kamikazes from wave 5 on.
+    game = Game(seed=72)
+    game.start()
+    for wave, upper in ((1, 1), (2, 2), (3, 3), (4, 4),
+                        (5, DIVE_MAX_GROUP), (12, DIVE_MAX_GROUP)):
+        game.wave = wave
+        sizes = set()
+        for _ in range(80):
+            for alien in game.aliens:
+                alien.alive = True
+                alien.diving = False
+            game.start_dive()
+            launched = [a for a in game.aliens if a.diving]
+            assert all(a.vy == DIVE_START_VY for a in launched), (
+                "a group member did not start its dive")
+            sizes.add(len(launched))
+        assert sizes == set(range(1, upper + 1)), (
+            f"wave {wave} launched group sizes {sorted(sizes)}")
 
 
 def check_feedback() -> None:

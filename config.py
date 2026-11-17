@@ -148,6 +148,7 @@ POWERUP_LABELS = {"rapid": "R", "triple": "T", "repair": "B"}
 DIVE_FIRST_DELAY = (4.0, 7.5)
 DIVE_INTERVAL = (5.0, 8.5)
 DIVE_MIN_ALIVE = 8          # don't dive when the wave is nearly cleared
+DIVE_MAX_GROUP = 5          # wave 5+ can send this many kamikazes at once
 DIVE_SPEED_X = 220.0
 DIVE_START_VY = 110.0
 DIVE_MAX_VY = 330.0
