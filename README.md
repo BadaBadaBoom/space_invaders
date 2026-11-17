@@ -563,8 +563,10 @@ dependency is needed.
 On the game-over card, press `←` / `→` to read the previous or next article
 without starting another run. Adjacent stories and page boundaries are fetched
 in the background; the current card stays on screen until the next one is
-ready, with `LOADING ARTICLE...` shown at the bottom. The feed's own position
-is untouched, so the next run still starts with the next unread story.
+ready, with `LOADING ARTICLE...` shown at the bottom. The arrows arm after
+`GAMEOVER_ARTICLE_DELAY` (0.5 s), so a held fire key or an accidental tap on
+the death frame does not skip the first story. The feed's own position is
+untouched, so the next run still starts with the next unread story.
 
 ## Headless smoke test
 
@@ -610,7 +612,8 @@ formation size/spacing, marching speed, bullet speeds, fire cooldown, colours,
 lives, number of bunkers, and bunker grid/cell size (`SHIELD_*`).
 
 Flow beats are tuned by `WAVE_INTRO_TIME` and `WAVE_INTRO_BOSS_TIME` (how long
-the card holds the fight), `GAMEOVER_FADE` (game-over layer fade-in) and
+the card holds the fight), `GAMEOVER_FADE` (game-over layer fade-in),
+`GAMEOVER_ARTICLE_DELAY` (how long the article arrows stay disarmed) and
 `HURT_FLASH_TIME` (red edge vignette after a lost life). The feel pass uses
 `MUZZLE_FLASH_TIME`, `COMBO_WINDOW` (kill-chain lifetime) and
 `COVER_FADE_TIME` (backdrop crossfade).

@@ -269,6 +269,9 @@ class RenderMixin:
             # Keep the view jolting for the whole marquee, not just the hit.
             self.shake_energy = max(self.shake_energy, SHAKE_BANNER)
         self.hurt_flash = max(0.0, getattr(self, "hurt_flash", 0.0) - dt)
+        self.article_input_lock = max(0.0,
+                                      getattr(self, "article_input_lock", 0.0)
+                                      - dt)
         if self.state == "gameover":
             self.game_over_time = min(GAMEOVER_FADE,
                                       getattr(self, "game_over_time", 0.0) + dt)

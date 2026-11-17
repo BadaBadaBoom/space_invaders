@@ -271,14 +271,16 @@ def main() -> int:
                 elif event.key == pygame.K_p:
                     game.toggle_pause()
                 elif event.key in (pygame.K_LEFT, pygame.K_a):
-                    if game.state == "gameover":
+                    if (game.state == "gameover"
+                            and game.article_input_lock <= 0):
                         news_feed.browse(-1)
-                    else:
+                    elif game.state != "gameover":
                         game.tap(-1)
                 elif event.key in (pygame.K_RIGHT, pygame.K_d):
-                    if game.state == "gameover":
+                    if (game.state == "gameover"
+                            and game.article_input_lock <= 0):
                         news_feed.browse(1)
-                    else:
+                    elif game.state != "gameover":
                         game.tap(1)
                 elif event.key == pygame.K_UP:
                     level = music_player.change_volume(VOLUME_STEP)

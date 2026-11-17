@@ -69,6 +69,7 @@ RECORD_BANNER_SCROLL = 190.0     # px/s of horizontal marquee travel
 WAVE_INTRO_TIME = 1.05           # regular wave card, seconds
 WAVE_INTRO_BOSS_TIME = 1.35      # boss waves get a longer warning
 GAMEOVER_FADE = 0.45             # seconds for the game-over overlay to fade in
+GAMEOVER_ARTICLE_DELAY = 0.5     # seconds before ←/→ browse NASA stories
 HURT_FLASH_TIME = 0.45           # red edge vignette after losing a life
 
 # Feel: ship exhaust/muzzle feedback, kill chains, and backdrop crossfades.

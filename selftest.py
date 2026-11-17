@@ -39,6 +39,7 @@ from config import (
     DRIFTER_SPAWN_DELAY,
     DROP_DISTANCE,
     FLOOR_Y,
+    GAMEOVER_ARTICLE_DELAY,
     GAMEOVER_FADE,
     HEIGHT,
     HURT_FLASH_TIME,
@@ -252,11 +253,14 @@ def check_flow() -> None:
     game.player_hit()
     assert game.state == "gameover"
     assert game.game_over_time == 0.0
+    assert game.article_input_lock == GAMEOVER_ARTICLE_DELAY
     game.update_feedback(GAMEOVER_FADE / 2)
     assert 0.0 < game.game_over_time < GAMEOVER_FADE
+    assert 0.0 < game.article_input_lock < GAMEOVER_ARTICLE_DELAY
     game.draw(game.canvas)
     game.update_feedback(GAMEOVER_FADE)
     assert game.game_over_time == GAMEOVER_FADE
+    assert game.article_input_lock == 0.0
 
 
 def check_help() -> None:

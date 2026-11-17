@@ -63,6 +63,7 @@ from config import (
     FLOOR_Y,
     FORMATION_LEFT,
     FORMATION_TOP,
+    GAMEOVER_ARTICLE_DELAY,
     GAP_X,
     GAP_Y,
     HEIGHT,
@@ -295,6 +296,7 @@ class Game(RenderMixin):
         self.wave_intro_bonus = 0
         self.hurt_flash = 0.0
         self.game_over_time = 0.0
+        self.article_input_lock = 0.0
         # Music state mirrored from main for the pause screen.
         self.music_enabled = True
         self.music_muted = False
@@ -1377,6 +1379,7 @@ class Game(RenderMixin):
             self.state = "gameover"
             self.pending_record = True
             self.game_over_time = 0.0
+            self.article_input_lock = GAMEOVER_ARTICLE_DELAY
             self.player_bullets.clear()
             self.alien_bullets.clear()
             self.play("boom")
