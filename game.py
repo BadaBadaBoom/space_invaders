@@ -61,6 +61,9 @@ from config import (
     DROP_DISTANCE,
     FIELD_TOP,
     FLOOR_Y,
+    FORMATION_BASE_SPEED,
+    FORMATION_SPEED_RAMP,
+    FORMATION_THINNING_SPEED,
     FORMATION_LEFT,
     FORMATION_TOP,
     GAMEOVER_ARTICLE_DELAY,
@@ -460,10 +463,22 @@ class Game(RenderMixin):
     def formation_aliens(self) -> list[Alien]:
         return [a for a in self.aliens if a.alive and not a.diving]
 
+    def wave_speed_scale(self) -> float:
+        return 1.0 + FORMATION_SPEED_RAMP * (self.wave - 1)
+
     def formation_speed(self) -> float:
         alive = sum(1 for a in self.aliens if a.alive)
         frac = alive / (COLS * ROWS)
-        return (32 + 150 * (1.0 - frac)) * (1.0 + 0.16 * (self.wave - 1))
+        return ((FORMATION_BASE_SPEED
+                 + FORMATION_THINNING_SPEED * (1.0 - frac))
+                * self.wave_speed_scale())
+
+    def boss_descent_speed(self) -> float:
+        """Vertical px/s matching the full formation's average drop pace."""
+        fleet_width = COLS * ALIEN_W + (COLS - 1) * GAP_X
+        travel = max(1.0, (RIGHT_WALL - LEFT_WALL) - fleet_width)
+        return (FORMATION_BASE_SPEED * self.wave_speed_scale()
+                / travel * DROP_DISTANCE)
 
     def update(self, dt: float, move: int = 0, fire: bool = False) -> None:
         """Advance one frame. `move` is -1/0/1, `fire` is edge-triggered."""
@@ -495,6 +510,9 @@ class Game(RenderMixin):
             self.victory_timer = max(0.0, self.victory_timer - dt)
         elif not self.alive_aliens() and self.boss is None:
             self.next_wave()
+        elif (self.boss is not None
+              and self.boss.y + BOSS_H >= LANDING_Y):
+            self.game_over()
         elif self.lowest_alien_y() + ALIEN_H >= LANDING_Y:
             self.game_over()
 
@@ -718,6 +736,10 @@ class Game(RenderMixin):
             if self.boss_entry == 0:
                 boss.y = BOSS_Y
             return
+        # Descend at the same average pace as a full formation, stopping at
+        # the landing line (reaching it ends the run, just like the fleet).
+        boss.y = min(LANDING_Y - BOSS_H,
+                     boss.y + self.boss_descent_speed() * dt)
         self.boss_volley -= dt
         if self.boss_volley <= 0:
             self.fire_boss_volley()

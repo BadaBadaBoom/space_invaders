@@ -330,8 +330,14 @@ Every fifth wave fields one wide machine instead of the formation. A longer
 `CAPITAL SHIP INBOUND` card warns you first, then the hull **slides down from
 above the arena** over 1 second. It cannot fire until it settles, and its
 health bar and `SENTINEL 1` nameplate only appear once it is in place. After
-that it hovers near the top, swaying ±46 px, never marches, never drops toward
-the landing line, and brings no formation escorts.
+that it hovers near the top, swaying ±46 px, brings no formation escorts, and
+slowly descends at the same average pace as a full formation. Reaching the
+landing line ends the run, just as it does for the little aliens.
+
+- **Descent**: the hull keeps moving downward at the formation's full-fleet
+  drop pace (`FORMATION_BASE_SPEED`, `FORMATION_SPEED_RAMP`,
+  `FORMATION_THINNING_SPEED`, `DROP_DISTANCE`), scaled by the wave. It stops at
+  the landing line; if it gets there before you kill it, the run ends.
 
 - **Health** scales with the boss number — 30 hits on wave 5, 42 on wave 10,
   54 on wave 15 — shown as a segmented bar above the hull that turns red in
@@ -468,7 +474,8 @@ present loop roughly halved, with the draw pass about twice as fast.
   fire, triple shot or a bunker repair
 - **A boss every fifth wave**: a warning card, a slide-in entrance, a
   `SENTINEL` nameplate, a ghost-drained HP bar, three fire patterns, kamikaze
-  summons, phasing bunkers, and an overdrive phase below half health
+  summons, phasing bunkers, a formation-paced descent toward the landing line,
+  and an overdrive phase below half health
 - 3 lives; a hit bursts the ship where it actually died, pulses a red edge
   vignette and blinks the lost life icon as the replacement ship arrives
 - **A dash**: double-tap a direction for an invulnerable 126 px burst that
@@ -593,7 +600,8 @@ bullet-only kills), dive-bombers (launch, wave-scaled group sizes, steering,
 leaving the arena, collisions, dash-through and points), power-up capsules
 (drop rate, falling, pickup, both timed boosts and repair), boss waves
 (warning card, entry slide
-and fire lock, scaling, sway bounds, all three volleys, damage, ghost health,
+and fire lock, scaling, sway bounds, descent pace and landing-line defeat,
+all three volleys, damage, ghost health,
 the overdrive trigger, kamikaze summons, phasing bunkers that keep their
 damage, kill payout and victory pause), the dash (double-tap
 window, burst over held input, wall clamp, cooldown, invulnerability and
@@ -622,7 +630,10 @@ genres. Useful in CI without a display.
 
 The game constants at the top of `config.py` are the knobs: window size,
 formation size/spacing, marching speed, bullet speeds, fire cooldown, colours,
-lives, number of bunkers, and bunker grid/cell size (`SHIELD_*`).
+lives, number of bunkers, and bunker grid/cell size (`SHIELD_*`). Formation
+pace is set by `FORMATION_BASE_SPEED`, `FORMATION_SPEED_RAMP` and
+`FORMATION_THINNING_SPEED`; the boss descends from the same full-fleet pace
+and `DROP_DISTANCE`.
 
 Flow beats are tuned by `WAVE_INTRO_TIME` and `WAVE_INTRO_BOSS_TIME` (how long
 the card holds the fight), `GAMEOVER_FADE` (game-over layer fade-in),

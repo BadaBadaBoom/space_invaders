@@ -37,6 +37,9 @@ GAP_X, GAP_Y = 18, 16
 FORMATION_TOP = 84
 FORMATION_LEFT = (WIDTH - (COLS * ALIEN_W + (COLS - 1) * GAP_X)) // 2
 DROP_DISTANCE = 22
+FORMATION_BASE_SPEED = 32.0     # px/s at full strength on wave 1
+FORMATION_SPEED_RAMP = 0.16     # speed gained per wave
+FORMATION_THINNING_SPEED = 150.0  # extra px/s as the fleet thins
 
 PLAYER_BULLET_SPEED = 620.0
 ALIEN_BULLET_SPEED = 250.0

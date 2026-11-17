@@ -119,8 +119,8 @@ def selftest(seconds: float) -> int:
     check_drifters(scores)
     check_ufo()
     check_powerups()
-    check_boss()
-    check_boss_hazards()
+    check_boss(scores)
+    check_boss_hazards(scores)
     check_dash()
     check_divers()
     check_feedback()
@@ -816,9 +816,9 @@ def check_powerups() -> None:
     assert game.bunker_cells_total > deployed
 
 
-def check_boss() -> None:
+def check_boss(leaderboard: Leaderboard | None = None) -> None:
     """Every fifth wave fields one wide boss instead of a formation."""
-    game = Game(seed=51)
+    game = Game(seed=51, leaderboard=leaderboard)
     game.start()
     assert game.wave == 1 and game.boss is None
     assert len(game.alive_aliens()) == COLS * ROWS
@@ -867,12 +867,16 @@ def check_boss() -> None:
 
     # It hovers inside the arena and never marches like the formation.
     xs = []
+    start_y = boss.y
     for _ in range(240):
         game.update_boss(1 / 60)
         xs.append(boss.x)
     assert max(xs) - min(xs) > 10, "boss never swayed"
     assert min(xs) >= LEFT_WALL and max(xs) + BOSS_W <= RIGHT_WALL
-    assert boss.y == BOSS_Y, "boss drifted vertically"
+    expected_drop = game.boss_descent_speed() * 4.0
+    assert boss.y > start_y, "boss never descended"
+    assert abs((boss.y - start_y) - expected_drop) < 1.0, (
+        "boss descent did not match the formation pace")
 
     # Volleys cycle a fan, an aimed triple and a rain of shots.
     game.boss_volley_index = 0
@@ -938,9 +942,9 @@ def check_boss() -> None:
     assert game.powerups, "the reward capsule died with the wave change"
 
 
-def check_boss_hazards() -> None:
+def check_boss_hazards(leaderboard: Leaderboard | None = None) -> None:
     """Boss fights summon kamikazes and phase bunkers without repairing them."""
-    game = Game(seed=81)
+    game = Game(seed=81, leaderboard=leaderboard)
     game.start()
     game.wave = 5
     game.spawn_wave()
@@ -1011,6 +1015,21 @@ def check_boss_hazards() -> None:
     assert game.boss is None
     assert game.shields_active, "boss death left the bunkers phased out"
     assert not any(a.alive for a in game.aliens), "summons survived the boss"
+
+    # A boss that reaches the landing line ends the run like the fleet.
+    game.wave = 5
+    game.spawn_wave()
+    game.update_boss(BOSS_ENTRY_TIME)
+    boss = game.boss
+    assert boss is not None
+    boss.y = LANDING_Y - BOSS_H - 1
+    game.boss_volley = 999.0
+    game.alien_bullets.clear()
+    game.update_boss(1.0)
+    assert boss.y == LANDING_Y - BOSS_H, "boss did not clamp at the landing line"
+    game.update(1 / 60)
+    assert game.state == "gameover", (
+        "boss at the landing line did not end the run")
 
 
 def check_dash() -> None:
