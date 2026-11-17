@@ -154,6 +154,12 @@ class RenderMixin:
 
     def update_feedback(self, dt: float) -> None:
         """Settle shake and score popups even while the sim is paused or over."""
+        # Adopt any cover that has finished rendering since the last frame.
+        prefetcher = getattr(self, "cover_prefetcher", None)
+        if prefetcher is not None:
+            new_bg = prefetcher.take(block=False)
+            if new_bg is not None:
+                self.pulp_bg = new_bg
         self.shake_phase += dt
         if self.shake_energy > 0.0:
             self.shake_energy *= math.exp(-dt / SHAKE_DECAY)

@@ -1353,6 +1353,9 @@ def check_backgrounds(leaderboard: Leaderboard | None = None) -> None:
     before_genre = game.music_genre
     upcoming = game.next_music_genre
     game.next_wave()
+    # Covers are rendered asynchronously; wait for the worker so the test can
+    # verify the artwork actually changed.
+    game.await_cover()
     assert pygame.image.tobytes(game.pulp_bg, "RGB") != before_art, (
         "backdrop did not change with the wave")
     if metal is not None:
