@@ -18,6 +18,7 @@ entities.py    bullets, aliens, player, bunkers, avatar hazards, UFO, capsules,
                the wave boss
 leaderboard.py persistent top-100 table
 audio.py       MusicPlayer worker thread and mixer channels
+workers.py     background-thread priority helper
 render.py      RenderMixin: playfield, HUD, leaderboard, overlays
 crt.py         pure-pygame CRT post-process overlay
 news.py        NASA story feed for the game-over card
@@ -201,9 +202,12 @@ glued with kick sidechain ducking, bus compression, a presence EQ, RMS
 targeting and a soft limiter.  A gentle mid/side lift widens the reverb and
 panned parts while keeping the bass and kick solid in mono.
 
-Rendering takes roughly 1–6 s depending on the genre and length, runs on a
-worker thread, and never stalls the game.  The current genre is shown under
-the wave number in the HUD.
+Rendering takes roughly 1–6 s depending on the genre and length and runs on a
+low-priority worker thread. Composition work is serialised so a new track and
+the prepared next track never render at the same time; the prepared next track
+is started from non-playing screens (title, pause, help, game over) so it does
+not compete with the active fight. The current genre is shown under the wave
+number in the HUD.
 
 Useful flags:
 
@@ -403,10 +407,11 @@ misregistration, a fold crease, foxing spots and a vignette.
 
 The finished cover is dimmed to alpha 58–76, so it sits behind the aliens,
 avatars, bullets and bunkers without harming readability. A new one is painted
-for each wave, but it is rendered on a worker thread so the wave transition
-does not hitch; when it lands, the old cover **crossfades** into the new one
-over `COVER_FADE_TIME` (0.55 s) instead of cutting. If numpy is unavailable the
-game falls back to a simple gradient backdrop.
+for each wave on a low-priority worker thread, one cover ahead, with the next
+painting started during the wave-intro freeze rather than mid-fight. When it
+lands, the old cover **crossfades** into the new one over `COVER_FADE_TIME`
+(0.55 s) instead of cutting. If numpy is unavailable the game falls back to a
+simple gradient backdrop.
 
 ## Fullscreen and scaling
 
@@ -570,12 +575,17 @@ the first story on the page; each following run advances by one. When the last
 story on a page has been shown, the game follows the page's **Next** button to
 the next page and carries on from there.
 
-The next story and its picture are downloaded on a background thread while you
-play, so the game-over screen never waits for the network. The card credits the
-source (`NASA · type · read time`) and shows the article's URL; click the link
-to open the full story in your browser. If the page cannot be reached the card
-is simply omitted and the usual game-over screen is shown. No API key or extra
-dependency is needed.
+NASA traffic and image decoding are confined to screens where the fight is
+not running: the title, pause, help, leaderboard and game-over cards. The feed
+keeps one story ahead, starting the next download while you are paused or
+reading the current game-over card. If a story is not ready yet, the card shows
+`FETCHING TRANSMISSION…` and fills itself in when the background worker lands.
+Network and image work is deliberately kept out of active gameplay.
+
+The card credits the source (`NASA · type · read time`) and shows the article's
+URL; click the link to open the full story in your browser. If the page cannot
+be reached the card is simply omitted and the usual game-over screen is shown.
+No API key or extra dependency is needed.
 
 On the game-over card, press `←` / `→` to read the previous or next article
 without starting another run. Adjacent stories and page boundaries are fetched
@@ -619,12 +629,15 @@ flash, movement lean, kill chains and expiry, cover crossfade, title attract
 loop), leaderboard landing (auto-scroll to a low-ranked new entry, top of the
 table from the title), audio ducking, game-over article browsing (cached
 neighbours, page crossings, edge stops, and the separate browse cursor), that
-each wave paints a different backdrop and rotates through every music genre
-without repeats, that the leaderboard keeps 100 sorted entries, reloads
-correctly and records each run once, that shooting statistics follow the
-accuracy/bunker rules above, that the record marquee fires and expires, and
-that the synth is audible, deterministic per seed, and distinct across
-genres. Useful in CI without a display.
+the NASA feed prefetches the next story and paints its waiting card, that music
+preparation is serialised and deferred while work is disallowed, that the next
+cover render starts with the wave intro, that each wave paints a different
+backdrop and rotates through every music genre without repeats, that the
+leaderboard keeps 100 sorted entries, reloads correctly and records each run
+once, that shooting statistics follow the accuracy/bunker rules above, that
+the record marquee fires and expires, and that the synth is audible,
+deterministic per seed, and distinct across genres. Useful in CI without a
+display.
 
 ## Tweaking
 

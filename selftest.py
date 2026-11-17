@@ -380,6 +380,8 @@ def check_render_caches() -> None:
     old_cover = pygame.Surface((WIDTH, HEIGHT))
     old_cover.fill((30, 20, 50))
     old_cover.set_alpha(64)
+    game.pulp_bg = pygame.Surface((WIDTH, HEIGHT))
+    game.pulp_bg.fill((8, 10, 20))
     game.adopt_cover(old_cover)
     game._backdrop(game.pulp_bg)
     base = game._backdrop(old_cover)
@@ -409,6 +411,14 @@ def check_render_caches() -> None:
     game.score += 1
     game.draw(game.canvas)
     assert game._gameover_layer is not layer, "score change reused the old card"
+
+    # The waiting panel has its own card contents.
+    scored_layer = game._gameover_layer
+    game.story_loading = True
+    game.draw(game.canvas)
+    assert game._gameover_layer is not scored_layer, (
+        "loading state reused the fallback card")
+    game.story_loading = False
 
     # A scaled presentation surface is reused between frames.
     screen = pygame.display.set_mode((1280, 960))
@@ -1651,6 +1661,29 @@ def check_news() -> None:
     assert crossing.take_browse().title == "D2"
     assert not crossing.browse_loading
 
+    # Game-over delivery prefetches the following story without touching the
+    # article browser, and reports when an armed feed is still waiting.
+    prefetch = NewsFeed()
+    prefetch.page = 1
+    prefetch.stories = [a, b]
+    prefetch._loaded = {0: a, 1: b}
+    prefetch.begin_round()
+    assert prefetch.take() is a
+    prefetch.advance()
+    prefetch.prefetch_next()
+    assert prefetch.current is b, "next story was not prefetched"
+    assert not prefetch.waiting_for_story
+    prefetch._browse_page = 1
+    prefetch.clear_browse()
+    assert prefetch.current is b and prefetch._browse_page is None, (
+        "clearing the article cursor lost the prefetched story")
+
+    waiting = NewsFeed()
+    waiting._armed = True
+    assert waiting.waiting_for_story, "armed feed did not report waiting"
+    waiting._armed = False
+    assert not waiting.waiting_for_story
+
 
 def check_stats() -> None:
     """Hit accuracy and bunker destruction track exactly the requested rules."""
@@ -1867,6 +1900,45 @@ def check_music_player() -> None:
         player.set_duck(1.0)
         player.update(1.0)
         assert player.duck > 0.9, "music did not swell back"
+
+        # A prepare requested while a compose worker is busy waits instead of
+        # starting a second CPU-heavy composition thread.
+        import threading
+
+        class BlockingMetal(FakeMetal):
+            started = threading.Event()
+            release = threading.Event()
+
+            @staticmethod
+            def compose(seed, shorten=1.0, genre=None, intensity=0.5):
+                calls.append(genre)
+                BlockingMetal.started.set()
+                BlockingMetal.release.wait(2.0)
+                return b"\0\0" * 4410
+
+        audio.metal = BlockingMetal
+        player = audio.MusicPlayer(enabled=False)
+        player.enabled = True
+        player.channels = []
+        player.request("jazz")
+        assert BlockingMetal.started.wait(1.0), "compose worker did not start"
+        player.prepare("metal")
+        assert player.prepare_thread is None, (
+            "prepare started a second worker during compose")
+        assert player.want_prepare is not None
+        BlockingMetal.release.set()
+        if player.thread is not None:
+            player.thread.join(2)
+        player.pending = None
+        player.update(0.0, allow_work=False)
+        assert player.prepare_thread is None, (
+            "prepare ran while work was disallowed")
+        player.update(0.0, allow_work=True)
+        assert player.prepare_thread is not None, (
+            "deferred prepare never started")
+        if player.prepare_thread is not None:
+            player.prepare_thread.join(2)
+        assert player.prepared is not None, "deferred prepare produced nothing"
     finally:
         audio.metal = real
 
@@ -1953,6 +2025,7 @@ def check_backgrounds(leaderboard: Leaderboard | None = None) -> None:
     assert alpha is not None and 0 < alpha < 160, f"backdrop alpha {alpha}"
 
     game = Game(seed=77, leaderboard=leaderboard)
+    game.await_cover()
     before_art = pygame.image.tobytes(game.pulp_bg, "RGB")
     before_genre = game.music_genre
     upcoming = game.next_music_genre

@@ -134,6 +134,7 @@ from entities import (
 )
 from leaderboard import Leaderboard
 from render import RenderMixin
+from workers import lower_worker_priority
 
 
 class CoverPrefetcher:
@@ -161,6 +162,7 @@ class CoverPrefetcher:
 
     def _render(self, seed: int) -> None:
         """Render one cover and publish it under the lock."""
+        lower_worker_priority()
         try:
             surf = make_pulp_background(random.Random(seed))
         except Exception:  # noqa: BLE001 - a bad cover falls back to a gradient
@@ -168,20 +170,29 @@ class CoverPrefetcher:
         with self.lock:
             self.ready = surf
 
-    def take(self, block: bool = False,
-             timeout: float | None = None) -> pygame.Surface | None:
-        """Consume the ready cover, if any, and start the next one.
+    def start_next(self) -> None:
+        """Start the next cover only when no render is already in flight."""
+        if self.ready is not None:
+            return
+        if self.thread is not None and self.thread.is_alive():
+            return
+        self._start_next()
+
+    def take(self, block: bool = False, timeout: float | None = None,
+             start_next: bool = False) -> pygame.Surface | None:
+        """Consume the ready cover, if any.
 
         Blocking waits for the current worker to finish; non-blocking simply
-        returns whatever has landed since the last take.
+        returns whatever has landed since the last take.  The next render is
+        started by ``start_next()`` during the wave-intro freeze.
         """
         if block and self.thread is not None and self.thread.is_alive():
             self.thread.join(timeout)
         with self.lock:
             surf = self.ready
             self.ready = None
-        if surf is not None:
-            self._start_next()
+        if surf is not None and start_next:
+            self.start_next()
         return surf
 
 
@@ -314,16 +325,18 @@ class Game(RenderMixin):
         self.last_tap: dict[int, float] = {}
         # NASA story card for the game-over screen (set by main).
         self.story = None
+        self.story_loading = False
         # Snapshot the board's best so this run can celebrate beating it once.
         self.record_to_beat = self.leaderboard.best
         self.record_beaten = False
         self.genre_bag = []
         self.music_genre = None
         self.next_music_genre = None
-        # Covers are rendered on a worker thread.  spawn_wave() will block for
-        # the first cover so pulp_bg is always valid; later waves use the
-        # prefetched cover and lazily adopt it if it is not ready yet.
-        self.cover_prefetcher = CoverPrefetcher(self.rng.getrandbits(64))
+        # Covers are rendered on a worker thread.  A run start reuses the
+        # prefetcher, so a cover prepared on the title screen or during the
+        # previous game's intro is available immediately.
+        if self.cover_prefetcher is None:
+            self.cover_prefetcher = CoverPrefetcher(self.rng.getrandbits(64))
         self.cover_pending = False
         self.pulp_bg = None
         self._bg_prev = None
@@ -392,8 +405,7 @@ class Game(RenderMixin):
         # it pending so update_feedback adopts it lazily without ever pulling
         # in the *next* wave's cover early.
         if self.cover_prefetcher is not None:
-            block = (self.wave == 1)
-            new_bg = self.cover_prefetcher.take(block=block, timeout=2.0)
+            new_bg = self.cover_prefetcher.take(block=False, timeout=2.0)
             if new_bg is not None:
                 self.adopt_cover(new_bg)
                 self.cover_pending = False
@@ -457,6 +469,9 @@ class Game(RenderMixin):
         else:
             self.wave_intro_subtitle = "DEFEND THE LINE"
         self.wave_intro_bonus = 100 if cleared else 0
+        # Use the frozen intro to paint the cover for the following wave.
+        if self.cover_prefetcher is not None:
+            self.cover_prefetcher.start_next()
 
     def alive_aliens(self) -> list[Alien]:
         return [a for a in self.aliens if a.alive]

@@ -246,10 +246,12 @@ class RenderMixin:
         # next wave's render, which must not be consumed until that wave begins.
         prefetcher = getattr(self, "cover_prefetcher", None)
         if prefetcher is not None and getattr(self, "cover_pending", False):
-            new_bg = prefetcher.take(block=False)
+            new_bg = prefetcher.take(block=False, start_next=False)
             if new_bg is not None:
                 self.adopt_cover(new_bg)
                 self.cover_pending = False
+                if self.wave_intro_time > 0:
+                    prefetcher.start_next()
         if getattr(self, "_bg_prev", None) is not None:
             self._bg_fade = min(1.0, getattr(self, "_bg_fade", 1.0)
                                 + dt / COVER_FADE_TIME)
@@ -1343,6 +1345,7 @@ class RenderMixin:
         # pure waste, so keep it and swap it in with a new alpha.
         signature = (
             self.score, self.wave, self.last_rank, id(story),
+            bool(getattr(self, "story_loading", False)),
             self.avatars_killed, self.shots_fired, self.shots_hit,
             self.bunker_cells_shot, self.bunker_cells_total,
         )
@@ -1359,6 +1362,8 @@ class RenderMixin:
             self.story_link_rect = None
             if story is not None:
                 self.draw_gameover_story(layer, story)
+            elif getattr(self, "story_loading", False):
+                self.draw_gameover_loading(layer)
             else:
                 self.draw_gameover_fallback(layer)
             hint = self.text(self.font_small,
@@ -1412,6 +1417,20 @@ class RenderMixin:
         title = self.text(self.font_mid, "NO TRANSMISSION", UI_DIM)
         sub = self.text(self.font_small,
                         "The NASA story feed did not answer this run.", UI_DIM)
+        surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 336))
+        surface.blit(sub, (WIDTH // 2 - sub.get_width() // 2, 378))
+
+    def draw_gameover_loading(self, surface: pygame.Surface) -> None:
+        """The story card's slot while the background feed is still working."""
+        panel = pygame.Rect(34, 222, 732, 288)
+        pygame.draw.rect(surface, (14, 18, 38), panel, border_radius=10)
+        pygame.draw.rect(surface, (46, 54, 92), panel, width=1,
+                         border_radius=10)
+        title = self.text(self.font_mid, "FETCHING TRANSMISSION…",
+                          (130, 200, 255))
+        sub = self.text(self.font_small,
+                        "The NASA story will appear here when it arrives.",
+                        UI_DIM)
         surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 336))
         surface.blit(sub, (WIDTH // 2 - sub.get_width() // 2, 378))
 

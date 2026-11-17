@@ -179,10 +179,14 @@ def main() -> int:
 
     while running:
         dt = clock.tick(FPS) / 1000.0
-        news_feed.update()
-        browsed = news_feed.take_browse()
-        if browsed is not None:
-            game.story = browsed
+        # Keep NASA traffic and image decoding out of active play.  The feed
+        # is topped up on title, pause, help, scores and game over instead.
+        if game.state != "playing":
+            news_feed.update()
+            browsed = news_feed.take_browse()
+            if browsed is not None:
+                game.story = browsed
+                game.story_loading = False
         game.update_feedback(dt)
 
         for event in pygame.event.get():
@@ -275,7 +279,8 @@ def main() -> int:
                 elif event.key == pygame.K_RETURN and game.state in ("title", "gameover"):
                     game.start()
                     story_assigned = False
-                    news_feed.begin_round()
+                    news_feed.clear_browse()
+                    music_player.set_work_allowed(False)
                     music_player.request(game.music_genre,
                                          music_intensity(game.wave))
                     music_player.prepare(game.next_music_genre,
@@ -337,16 +342,31 @@ def main() -> int:
         game.music_muted = music_player.muted
         game.music_volume_percent = music_player.volume_percent
         music_player.set_duck(MUSIC_DUCK_LEVELS.get(game.state, 1.0))
-        music_player.update(dt)
+        music_player.update(dt, allow_work=game.state != "playing")
 
-        # The story was fetched during the run; pin it to this game over and
-        # start looking for the next one during the following game.
-        if game.state == "gameover" and not story_assigned:
-            story_assigned = True
-            story = news_feed.take()
-            game.story = story
-            if story is not None:
-                news_feed.advance()
+        # Pin the prefetched story to this game over.  If it is not ready,
+        # show a waiting panel and keep polling while the non-playing feed
+        # finishes the page/image.  The following story is then prefetched
+        # here, on pause or on title, never during active play.
+        if game.state == "gameover":
+            if not story_assigned:
+                story_assigned = True
+                story = news_feed.take()
+                game.story = story
+                game.story_loading = (story is None
+                                      and news_feed.waiting_for_story)
+                if story is not None:
+                    news_feed.advance()
+                    news_feed.prefetch_next()
+            elif game.story is None:
+                story = news_feed.take()
+                if story is not None:
+                    game.story = story
+                    game.story_loading = False
+                    news_feed.advance()
+                    news_feed.prefetch_next()
+                else:
+                    game.story_loading = news_feed.waiting_for_story
 
         # Keep the pointer visible outside active play so fullscreen story
         # links can be clicked; hide it only while the game is being played.

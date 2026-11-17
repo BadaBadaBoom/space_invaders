@@ -10,6 +10,7 @@ import pygame
 
 from config import MUSIC_DUCK_FADE, MUSIC_SHORTEN
 from deps import metal
+from workers import lower_worker_priority
 
 DEFAULT_VOLUME = 0.32
 VOLUME_STEP = 0.1
@@ -51,6 +52,10 @@ class MusicPlayer:
         # Genre currently being rendered by an in-flight prepare worker.  Used
         # to make repeated prepare() calls for the same genre idempotent.
         self.preparing_genre: str | None = None
+        # Queued prepare work.  Main allows this to start only outside active
+        # play so a multi-second composition does not compete with the loop.
+        self.want_prepare: tuple[str, float] | None = None
+        self.work_allowed = True
         if self.enabled:
             pygame.mixer.set_num_channels(16)
             self.channels = [pygame.mixer.Channel(14), pygame.mixer.Channel(15)]
@@ -76,20 +81,39 @@ class MusicPlayer:
             # slot so no stale track survives, and invalidate any in-flight
             # worker before starting the new one.
             self.prepare_generation += 1
-            generation = self.prepare_generation
             self.preparing_genre = genre
             self.prepared = None
             self.prepared_genre = None
+            self.want_prepare = (genre, float(intensity))
+        self._maybe_start_prepare()
+
+    def _compose_busy(self) -> bool:
+        return self.thread is not None and self.thread.is_alive()
+
+    def _prepare_busy(self) -> bool:
+        return (self.prepare_thread is not None
+                and self.prepare_thread.is_alive())
+
+    def _maybe_start_prepare(self) -> None:
+        if not self.enabled or not self.work_allowed:
+            return
+        if self.want_prepare is None:
+            return
+        if self._compose_busy() or self._prepare_busy():
+            return
+        genre, intensity = self.want_prepare
+        self.want_prepare = None
         seed = random.randrange(1 << 30)
         thread = threading.Thread(
             target=self._prepare_compose,
-            args=(seed, genre, generation, intensity),
+            args=(seed, genre, self.prepare_generation, intensity),
             daemon=True)
         self.prepare_thread = thread
         thread.start()
 
     def _prepare_compose(self, seed: int, genre: str, generation: int,
                          intensity: float = 0.5) -> None:
+        lower_worker_priority()
         try:
             data: bytes | None = metal.compose(seed, shorten=MUSIC_SHORTEN,
                                                genre=genre,
@@ -146,7 +170,8 @@ class MusicPlayer:
             self.genre = genre
         if self._take_prepared(genre):
             return
-        if self.thread and self.thread.is_alive():
+        if (self._compose_busy() or self._prepare_busy()
+                or (not self.work_allowed and self.current is not None)):
             self.want_new = True
             self.want_genre = genre
         else:
@@ -175,6 +200,7 @@ class MusicPlayer:
     def _compose(self, seed: int, genre: str | None,
                  generation: int | None = None,
                  intensity: float = 0.5) -> None:
+        lower_worker_priority()
         try:
             data: bytes | None = metal.compose(seed, shorten=MUSIC_SHORTEN,
                                                genre=genre,
@@ -186,7 +212,8 @@ class MusicPlayer:
                 return  # superseded by a track taken from the prepared slot
             self.pending = data
 
-    def update(self, dt: float = 0.0) -> None:
+    def update(self, dt: float = 0.0, allow_work: bool = True) -> None:
+        self.work_allowed = bool(allow_work)
         if not self.enabled:
             return
         if abs(self.duck - self.duck_target) > 1e-3:
@@ -196,8 +223,11 @@ class MusicPlayer:
                 blend = 1.0 - math.exp(-dt / MUSIC_DUCK_FADE)
                 self.duck += (self.duck_target - self.duck) * blend
             self._apply_volume()
-        if self.want_new and not (self.thread and self.thread.is_alive()):
+        if (self.want_new and not self._compose_busy()
+                and not self._prepare_busy()
+                and (self.work_allowed or self.current is None)):
             self._start(self.want_genre, self.intensity)
+        self._maybe_start_prepare()
         with self.lock:
             data, self.pending = self.pending, None
         if not data:
@@ -239,6 +269,10 @@ class MusicPlayer:
     def set_duck(self, factor: float) -> None:
         """Set the runtime output scale (1.0 = full, 0.0 = silent)."""
         self.duck_target = max(0.0, min(1.0, float(factor)))
+
+    def set_work_allowed(self, allowed: bool) -> None:
+        """Allow or defer starting new background composition work."""
+        self.work_allowed = bool(allowed)
 
     @property
     def level(self) -> float:

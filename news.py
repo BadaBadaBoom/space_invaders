@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 import pygame
 
 from config import NEWS_TIMEOUT, NEWS_URL, STORY_IMAGE_H, STORY_IMAGE_W
+from workers import lower_worker_priority
 
 _UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
        "(KHTML, like Gecko) Chrome/120 Safari/537.36")
@@ -367,6 +368,25 @@ class NewsFeed:
         story, self._browse_ready = self._browse_ready, None
         return story
 
+    def prefetch_next(self) -> None:
+        """Arm the next story while the game-over/pause screens are open."""
+        if not self.enabled:
+            return
+        self.current = None
+        self._armed = True
+        self._ensure_story()
+
+    def clear_browse(self) -> None:
+        """Forget the previous game-over article cursor when a run starts."""
+        self._reset_browse()
+
+    @property
+    def waiting_for_story(self) -> bool:
+        """True while the armed feed is still trying to produce a card."""
+        return (self.enabled and self.current is None
+                and (self._busy
+                     or (self._armed and time.time() >= self._retry_at)))
+
     def browse(self, delta: int) -> Story | None:
         """Select the next (+1) or previous (-1) article from the game over.
 
@@ -521,6 +541,7 @@ class NewsFeed:
         self.current = None
 
     def _fetch_page(self, page: int, tag: str = "feed") -> None:
+        lower_worker_priority()
         try:
             if page == 1:
                 markup = _get(NEWS_URL).decode("utf-8", "replace")
@@ -539,6 +560,7 @@ class NewsFeed:
 
     def _fetch_story(self, index: int, story: Story,
                      tag: str = "feed", page: int = 0) -> None:
+        lower_worker_priority()
         try:
             summary = story.summary
             if _is_junk(summary, story.title):
