@@ -154,12 +154,15 @@ class RenderMixin:
 
     def update_feedback(self, dt: float) -> None:
         """Settle shake and score popups even while the sim is paused or over."""
-        # Adopt any cover that has finished rendering since the last frame.
+        # If the current wave's cover was not ready at spawn_wave(), adopt it
+        # as soon as it lands.  Only one adoption per wave: take() starts the
+        # next wave's render, which must not be consumed until that wave begins.
         prefetcher = getattr(self, "cover_prefetcher", None)
-        if prefetcher is not None:
+        if prefetcher is not None and getattr(self, "cover_pending", False):
             new_bg = prefetcher.take(block=False)
             if new_bg is not None:
                 self.pulp_bg = new_bg
+                self.cover_pending = False
         self.shake_phase += dt
         if self.shake_energy > 0.0:
             self.shake_energy *= math.exp(-dt / SHAKE_DECAY)

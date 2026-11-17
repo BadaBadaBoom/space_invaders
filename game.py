@@ -259,11 +259,12 @@ class Game(RenderMixin):
         self.genre_bag = []
         self.music_genre = None
         self.next_music_genre = None
-        # Covers are rendered on a worker thread.  The first one is created
-        # synchronously here (title screen / test setup) so pulp_bg is always
-        # valid; every subsequent wave uses the prefetched cover.
+        # Covers are rendered on a worker thread.  spawn_wave() will block for
+        # the first cover so pulp_bg is always valid; later waves use the
+        # prefetched cover and lazily adopt it if it is not ready yet.
         self.cover_prefetcher = CoverPrefetcher(self.rng.getrandbits(64))
-        self.pulp_bg = self.cover_prefetcher.take(block=True)
+        self.cover_pending = False
+        self.pulp_bg = None
         self.spawn_wave()
 
     def spawn_wave(self) -> None:
@@ -303,13 +304,18 @@ class Game(RenderMixin):
         # genre composed ahead so the next track can be prepared in advance.
         self.music_genre = self.next_music_genre or self.choose_music_genre()
         self.next_music_genre = self.choose_music_genre()
-        # Swap in the prefetched cover if it has landed; otherwise keep the
-        # previous wave's backdrop until the worker finishes.  This removes
-        # the ~250 ms main-thread hitch that used to happen here.
+        # Swap in the prefetched cover for this wave.  The first wave blocks
+        # until a cover is ready; later waves take it if it has landed or mark
+        # it pending so update_feedback adopts it lazily without ever pulling
+        # in the *next* wave's cover early.
         if self.cover_prefetcher is not None:
-            new_bg = self.cover_prefetcher.take(block=False)
+            block = (self.wave == 1)
+            new_bg = self.cover_prefetcher.take(block=block, timeout=2.0)
             if new_bg is not None:
                 self.pulp_bg = new_bg
+                self.cover_pending = False
+            else:
+                self.cover_pending = True
 
     def spawn_boss(self) -> None:
         """Field the wave's boss: tougher and richer with every fifth wave."""
@@ -1147,11 +1153,12 @@ class Game(RenderMixin):
         This is only meant for tests; during play the cover swaps in lazily
         via update_feedback so wave transitions never hitch.
         """
-        if self.cover_prefetcher is None:
+        if self.cover_prefetcher is None or not self.cover_pending:
             return
         surf = self.cover_prefetcher.take(block=True, timeout=timeout)
         if surf is not None:
             self.pulp_bg = surf
+            self.cover_pending = False
 
     def toggle_pause(self) -> None:
         if self.state == "playing":
