@@ -153,6 +153,7 @@ def main() -> int:
     story_assigned = False
     volume_hint: tuple[str, int] | None = None
     crt_hint: tuple[str, int] | None = None
+    mode_hint: tuple[str, int] | None = None
 
     def toggle_fullscreen() -> None:
         nonlocal screen, fullscreen
@@ -259,6 +260,10 @@ def main() -> int:
                     game.show_scores()
                 elif event.key == pygame.K_h:
                     game.toggle_help()
+                elif event.key == pygame.K_i:
+                    on = game.toggle_invincible()
+                    mode_hint = ("INVINCIBLE ON" if on else "INVINCIBLE OFF",
+                                 pygame.time.get_ticks() + 1400)
                 elif event.key == pygame.K_RETURN and game.state in ("title", "gameover"):
                     game.start()
                     story_assigned = False
@@ -348,6 +353,8 @@ def main() -> int:
             hint = volume_hint[0]
         if crt_hint is not None and now < crt_hint[1]:
             hint = crt_hint[0]
+        if mode_hint is not None and now < mode_hint[1]:
+            hint = mode_hint[0]
         if music_player.muted and game.state not in ("title", "scores"):
             hint = "MUSIC OFF"
         if game.state == "gameover" and news_feed.browse_loading:

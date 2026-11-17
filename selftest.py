@@ -110,6 +110,7 @@ def selftest(seconds: float) -> int:
 
     check_shields(scores)
     check_flow()
+    check_invincible()
     check_help()
     check_render_caches()
     check_feel()
@@ -261,6 +262,48 @@ def check_flow() -> None:
     game.update_feedback(GAMEOVER_FADE)
     assert game.game_over_time == GAMEOVER_FADE
     assert game.article_input_lock == 0.0
+
+
+def check_invincible() -> None:
+    """The I test shield survives damage, landings and restarts."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="si_invincible_") as folder:
+        board = Leaderboard(Path(folder) / "scores.json")
+        game = Game(seed=64, leaderboard=board)
+        game.start()
+        game.wave_intro_time = 0.0
+        assert not game.invincible
+        assert game.toggle_invincible()
+        assert game.invincible
+        lives = game.lives
+
+        # Direct damage and an enemy bullet both bounce off.
+        game.player.invulnerable = 0.0
+        game.player_hit()
+        assert game.lives == lives and game.state == "playing"
+        game.alien_bullets = [Bullet(game.player.center_x, game.player.y,
+                                     ALIEN_BULLET_SPEED, False)]
+        game.check_collisions()
+        assert game.lives == lives and not game.alien_bullets
+        game.draw(game.canvas)
+
+        # The landing line cannot end a test run either.
+        for alien in game.aliens:
+            alien.y = LANDING_Y
+        game.update(1 / 60)
+        assert game.state == "playing", (
+            "invincible run ended at the landing line")
+
+        # It survives a restart and can be switched off.
+        game.start()
+        assert game.invincible, "test shield was cleared by restart"
+        game.wave_intro_time = 0.0
+        assert not game.toggle_invincible()
+        for alien in game.aliens:
+            alien.y = LANDING_Y
+        game.update(1 / 60)
+        assert game.state == "gameover"
 
 
 def check_help() -> None:

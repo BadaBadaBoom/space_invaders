@@ -256,6 +256,7 @@ class Game(RenderMixin):
              self.rng.choice((1, 1, 1, 2)), self.rng.uniform(6, 26))
             for _ in range(90)
         ]
+        self.invincible = False
         self.state = "title"  # title | playing | paused | gameover | scores | help
         self.help_return_state = "title"
         self.reset()
@@ -1343,6 +1344,8 @@ class Game(RenderMixin):
         return lowest
 
     def player_hit(self) -> None:
+        if self.invincible:
+            return
         # Blow up where the ship actually was before it respawns at centre.
         self.spawn_ship_burst(self.player.center_x, self.player.y + PLAYER_H / 2)
         self.combo = 0
@@ -1375,7 +1378,7 @@ class Game(RenderMixin):
         self.flashes.append([x, y, 0.24, 0.24, PLAYER_COLOR, 18.0])
 
     def game_over(self) -> None:
-        if self.state == "playing":
+        if self.state == "playing" and not self.invincible:
             self.state = "gameover"
             self.pending_record = True
             self.game_over_time = 0.0
@@ -1448,6 +1451,11 @@ class Game(RenderMixin):
             self.help_return_state = self.state
             self.clear_armed = False
             self.state = "help"
+
+    def toggle_invincible(self) -> bool:
+        """Toggle the testing shield; it persists across restarts."""
+        self.invincible = not self.invincible
+        return self.invincible
 
     def close_help(self) -> None:
         if self.state == "help":

@@ -893,6 +893,9 @@ class RenderMixin:
             label = self.text(self.font_small, f"({self.music_genre})",
                               (80, 88, 130))
             surface.blit(label, (WIDTH // 2 - label.get_width() // 2, 44))
+        if getattr(self, "invincible", False):
+            label = self.text(self.font_tiny, "INVINCIBLE", (255, 120, 140))
+            surface.blit(label, (RIGHT_WALL - label.get_width(), 62))
 
         # Fleet progress: the whole formation as a dot map, dimmed where the
         # ranks have been thinned out.  8x4 cells of 4px with a 1px gutter fit
@@ -1185,6 +1188,7 @@ class RenderMixin:
             ("FIRE", "SPACE"),
             ("DASH", "DOUBLE-TAP LEFT / RIGHT"),
             ("PAUSE", "P"),
+            ("INVINCIBLE", "I  (TESTING)"),
             ("HELP", "H"),
             ("SCORES", "L"),
             ("SCROLL", "UP / DOWN  OR  WHEEL"),
@@ -1233,7 +1237,7 @@ class RenderMixin:
             self.font_tiny,
             "POWERUPS DROP FROM SOME DESTROYED INVADERS. "
             "FLY INTO OR SHOOT A CAPSULE TO COLLECT IT.", UI_DIM)
-        surface.blit(note, (WIDTH // 2 - note.get_width() // 2, 480))
+        surface.blit(note, (WIDTH // 2 - note.get_width() // 2, 492))
 
         hint = self.text(self.font_small, "H  /  ESC   BACK", header)
         surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 530))

@@ -108,6 +108,7 @@ and painted backdrops, but no soundtrack.
 | double-tap `←` / `→` | Dash: 126 px burst, 1.2 s cooldown |
 | `Space` | Fire (max 3 shots on screen) |
 | `P` | Pause / resume (the pause screen summarises the run) |
+| `I` | Toggle invincible test mode; it survives run restarts until turned off |
 | `H` | Help card: every command plus an illustrated guide to the power-up capsules |
 | `L` | High-score leaderboard (up/down, `PageUp`/`PageDown` or the mouse wheel to scroll) |
 | `←` / `→` on game over | Read the previous / next NASA article |
@@ -120,6 +121,11 @@ and painted backdrops, but no soundtrack.
 | `F11` or `Alt+Enter` | Fullscreen on/off |
 | `Enter` | Start / restart (composes a new song) |
 | `Esc` | Leave fullscreen, or quit |
+
+`I` is a testing aid rather than a gameplay feature. While it is on, enemy
+fire, dive-bombers, avatar badges and the landing line cannot end the run. The
+HUD shows `INVINCIBLE`, and the setting survives run restarts until you press
+`I` again. Toggle it off when you want the run to be lethal again.
 
 The dash ignores held movement for its 0.14 s burst, so it works as an
 escape even while you are pressing the other way, and the burst is
@@ -589,7 +595,10 @@ damage, kill payout and victory pause), the dash (double-tap
 window, burst over held input, wall clamp, cooldown, invulnerability and
 dash-through kills), the flow beats (wave cards freeze and release the sim, the
 `+100` bonus lands after the card, the death burst and red vignette fire, the
-game-over card fades in, and the pause summary paints), the help card (opens
+game-over card fades in, and the pause summary paints), the invincibility test
+toggle (survives bullets, badge collisions and the landing line, persists
+across restarts, and becomes lethal again when switched off), the help card
+(opens
 from the title, play, pause, game over and leaderboard, freezes the fight
 while open, returns to the same screen, and has a cached illustration for
 every power-up), the render caches (label, sprite and backdrop reuse, bounded
