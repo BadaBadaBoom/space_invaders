@@ -553,13 +553,13 @@ class RenderMixin:
         # Live record: follows the running score the moment it passes the board.
         best = max(self.leaderboard.best, self.score)
         best_label = f"BEST {best:05d}"
-        best_shadow = self.font_tiny.render(best_label, True, (10, 10, 20))
-        best_text = self.font_tiny.render(best_label, True, UI_RECORD)
-        surface.blit(best_shadow, (LEFT_WALL + 1, 5))
-        surface.blit(best_text, (LEFT_WALL, 4))
+        best_shadow = self.font_small.render(best_label, True, (10, 10, 20))
+        best_text = self.font_small.render(best_label, True, UI_RECORD)
+        surface.blit(best_shadow, (LEFT_WALL + 1, 3))
+        surface.blit(best_text, (LEFT_WALL, 2))
         score = self.font_small.render(f"SCORE {self.score:05d}", True, UI_COLOR)
         wave = self.font_small.render(f"WAVE {self.wave}", True, UI_DIM)
-        surface.blit(score, (LEFT_WALL, 24))
+        surface.blit(score, (LEFT_WALL, 25))
         surface.blit(wave, (WIDTH // 2 - wave.get_width() // 2, 24))
         if self.music_genre:
             label = self.font_small.render(
