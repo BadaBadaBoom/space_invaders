@@ -247,9 +247,10 @@ seconds later.
 ## Dive-bombers
 
 Every 4–8 seconds one alien peels out of the formation, stops marching and
-steers toward your ship, accelerating as it falls. It stops counting as part
-of the formation — the march keeps moving without it, and it can no longer
-shoot or trigger the landing line.
+steers toward your ship, accelerating as it falls. It drags a layered flame
+plume and a trail of embers behind it, which stream opposite to its dive
+angle. It stops counting as part of the formation — the march keeps moving
+without it, and it can no longer shoot or trigger the landing line.
 
 Shoot it for its row's points, dash through it to destroy it safely, or let it
 reach you and lose a life; if it misses it leaves the bottom of the arena with
@@ -376,7 +377,7 @@ size, and `off` or 0% intensity skips it entirely.
 - **A mystery UFO** (see below) crossing the top of the arena every ~25 s,
   worth 50–300 points and hittable only through a cleared column
 - **Dive-bombers** (see below): every few seconds one alien peels out of the
-  formation and swoops at you, steering as it falls
+  formation, leaves a burning trail and swoops at you, steering as it falls
 - **Power-up capsules**: some alien kills drop a falling capsule for rapid
   fire, triple shot or a bunker repair
 - **A boss every fifth wave**: a wide machine with a segmented HP bar, three

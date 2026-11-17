@@ -638,6 +638,13 @@ def check_divers() -> None:
     game.update_aliens(1 / 60)
     assert (diver.x, diver.y) == (x, y), "formation march moved a diver"
 
+    # It trails sparks, and the plume paints without raising.
+    before = len(game.debris)
+    for _ in range(10):
+        game.update_divers(1 / 60)
+    assert len(game.debris) > before, "diving alien left no flame trail"
+    game.draw(game.canvas)
+
     # It descends and steers toward the ship.
     game.player.x = LEFT_WALL
     diver.x = RIGHT_WALL - ALIEN_W

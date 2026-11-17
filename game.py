@@ -436,6 +436,7 @@ class Game(RenderMixin):
             alien.x = clamp(alien.x + alien.vx * dt, LEFT_WALL,
                             RIGHT_WALL - ALIEN_W)
             alien.y += alien.vy * dt
+            self.spawn_dive_ember(alien)
             if alien.y > FLOOR_Y:
                 # It missed and left the arena.
                 alien.alive = False
@@ -446,6 +447,22 @@ class Game(RenderMixin):
                 self.spawn_debris(alien)
                 if player.invulnerable <= 0 and player.dash_time <= 0:
                     self.player_hit()
+
+    def spawn_dive_ember(self, alien: Alien) -> None:
+        """A couple of sparks peeling off the dive-bomber's burning trail."""
+        if self.rng.random() > 0.85:
+            return
+        for _ in range(2):
+            self.debris.append([
+                alien.x + ALIEN_W / 2 + self.rng.uniform(-4, 4),
+                alien.y + ALIEN_H / 2 + self.rng.uniform(-4, 4),
+                -alien.vx * 0.25 + self.rng.uniform(-30.0, 30.0),
+                -alien.vy * 0.25 + self.rng.uniform(-30.0, 30.0),
+                0.30, 0.30,
+                self.rng.choice(((255, 210, 120), (255, 140, 60),
+                                 (255, 90, 40))),
+                self.rng.choice((2, 3)),
+            ])
 
     def start_dive(self) -> None:
         """Peel one formation alien out into a kamikaze run at the ship."""

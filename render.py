@@ -47,6 +47,7 @@ from config import (
     UI_DIM,
     WIDTH,
 )
+from entities import Alien
 
 _ELLIPSIS = "…"
 
@@ -217,7 +218,47 @@ class RenderMixin:
                 continue
             color = ROW_COLORS[a.row % len(ROW_COLORS)]
             x, y = int(a.x), int(a.y)
+            if a.diving:
+                self.draw_dive_flame(surface, a, x, y)
             self.draw_alien_sprite(surface, x, y, color, frame, look)
+
+    def draw_dive_flame(self, surface: pygame.Surface, alien: Alien,
+                        x: int, y: int) -> None:
+        """A layered exhaust plume streaming out behind a dive-bomber."""
+        speed = math.hypot(alien.vx, alien.vy)
+        if speed < 1e-3:
+            return
+        dx, dy = alien.vx / speed, alien.vy / speed
+        px, py = -dy, dx
+        cx = x + ALIEN_W / 2
+        cy = y + ALIEN_H / 2
+        # Leave from the tail rather than the middle of the sprite.
+        bx = cx - dx * ALIEN_H * 0.45
+        by = cy - dy * ALIEN_H * 0.45
+        tick = pygame.time.get_ticks() * 0.02
+        flicker = 0.88 + 0.12 * math.sin(tick + alien.x)
+        sway = math.sin(tick * 1.7 + alien.y) * 2.2
+
+        length = 24.0 + speed * 0.055
+        layers = (
+            (1.00, 8.0, (255, 108, 40)),
+            (0.68, 5.5, (255, 176, 72)),
+            (0.38, 3.0, (255, 242, 190)),
+        )
+        for scale, half, colour in layers:
+            reach = length * flicker * scale
+            tip_x = bx - dx * reach + px * sway
+            tip_y = by - dy * reach + py * sway
+            mid_x = bx - dx * reach * 0.45
+            mid_y = by - dy * reach * 0.45
+            wing = half * 1.3
+            pygame.draw.polygon(surface, colour, (
+                (int(bx + px * half), int(by + py * half)),
+                (int(mid_x + px * wing), int(mid_y + py * wing)),
+                (int(tip_x), int(tip_y)),
+                (int(mid_x - px * wing), int(mid_y - py * wing)),
+                (int(bx - px * half), int(by - py * half)),
+            ))
 
     def draw_alien_sprite(self, surface: pygame.Surface, x: int, y: int,
                           color: tuple[int, int, int], frame: int,
