@@ -172,6 +172,9 @@ def main() -> int:
     while running:
         dt = clock.tick(FPS) / 1000.0
         news_feed.update()
+        browsed = news_feed.take_browse()
+        if browsed is not None:
+            game.story = browsed
         game.update_feedback(dt)
 
         for event in pygame.event.get():
@@ -268,9 +271,15 @@ def main() -> int:
                 elif event.key == pygame.K_p:
                     game.toggle_pause()
                 elif event.key in (pygame.K_LEFT, pygame.K_a):
-                    game.tap(-1)
+                    if game.state == "gameover":
+                        news_feed.browse(-1)
+                    else:
+                        game.tap(-1)
                 elif event.key in (pygame.K_RIGHT, pygame.K_d):
-                    game.tap(1)
+                    if game.state == "gameover":
+                        news_feed.browse(1)
+                    else:
+                        game.tap(1)
                 elif event.key == pygame.K_UP:
                     level = music_player.change_volume(VOLUME_STEP)
                     volume_hint = (f"MUSIC {round(level * 100)}%",
@@ -339,6 +348,8 @@ def main() -> int:
             hint = crt_hint[0]
         if music_player.muted and game.state not in ("title", "scores"):
             hint = "MUSIC OFF"
+        if game.state == "gameover" and news_feed.browse_loading:
+            hint = "LOADING ARTICLE..."
         if hint:
             label = game.font_small.render(hint, True, UI_DIM)
             game.canvas.blit(label, (RIGHT_WALL - label.get_width(),

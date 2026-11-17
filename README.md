@@ -110,6 +110,7 @@ and painted backdrops, but no soundtrack.
 | `P` | Pause / resume (the pause screen summarises the run) |
 | `H` | Help card: every command plus an illustrated guide to the power-up capsules |
 | `L` | High-score leaderboard (up/down, `PageUp`/`PageDown` or the mouse wheel to scroll) |
+| `←` / `→` on game over | Read the previous / next NASA article |
 | `Delete` | On the leaderboard: erase every saved score (press twice) |
 | `M` | Mute / unmute music |
 | `↑` / `↓` | Music volume up / down (10% steps) |
@@ -557,6 +558,12 @@ to open the full story in your browser. If the page cannot be reached the card
 is simply omitted and the usual game-over screen is shown. No API key or extra
 dependency is needed.
 
+On the game-over card, press `←` / `→` to read the previous or next article
+without starting another run. Adjacent stories and page boundaries are fetched
+in the background; the current card stays on screen until the next one is
+ready, with `LOADING ARTICLE...` shown at the bottom. The feed's own position
+is untouched, so the next run still starts with the next unread story.
+
 ## Headless smoke test
 
 ```bash
@@ -585,13 +592,14 @@ every power-up), the render caches (label, sprite and backdrop reuse, bounded
 backdrop storage, and game-over-card invalidation), the feel pass (muzzle
 flash, movement lean, kill chains and expiry, cover crossfade, title attract
 loop), leaderboard landing (auto-scroll to a low-ranked new entry, top of the
-table from the title), audio ducking, that each wave paints a different
-backdrop and rotates through every music genre without repeats, that the
-leaderboard keeps 100 sorted entries, reloads correctly and records each run
-once, that shooting statistics follow the accuracy/bunker rules above, that
-the record marquee fires and expires, and that the synth is audible,
-deterministic per seed, and distinct across genres. Useful in CI without a
-display.
+table from the title), audio ducking, game-over article browsing (cached
+neighbours, page crossings, edge stops, and the separate browse cursor), that
+each wave paints a different backdrop and rotates through every music genre
+without repeats, that the leaderboard keeps 100 sorted entries, reloads
+correctly and records each run once, that shooting statistics follow the
+accuracy/bunker rules above, that the record marquee fires and expires, and
+that the synth is audible, deterministic per seed, and distinct across
+genres. Useful in CI without a display.
 
 ## Tweaking
 

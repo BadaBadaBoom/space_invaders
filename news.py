@@ -276,6 +276,8 @@ class NewsFeed:
     when a game starts; ``take()`` when it ends.  One page is fetched ahead so
     crossing a page boundary never waits, and the index only advances when a
     story was actually shown, so a failed fetch is retried next round.
+    ``browse()`` and ``take_browse()`` move through adjacent articles on the
+    game-over card without disturbing that next-run cursor.
     """
 
     #: how many stories before the end of a page to fetch the next page
@@ -297,11 +299,23 @@ class NewsFeed:
         self._busy = False
         self._armed = False
         self._retry_at = 0.0
+        # Game-over article browsing keeps its own cursor and caches so it
+        # never disturbs the feed position used by the next run.
+        self._browse_page: int | None = None
+        self._browse_index: int | None = None
+        self._browse_ready: Story | None = None
+        self._browse_target: tuple[int, int] | None = None
+        self._browse_pages: dict[int, Listing] = {}
+        self._browse_stories: dict[tuple[int, int], Story] = {}
+        self._browse_request: tuple[str, int, int | None] | None = None
+        self._browse_loading = False
+        self._browse_error_until = 0.0
 
     # -- public API -------------------------------------------------------- #
 
     def begin_round(self) -> None:
         """Arm the feed for a new game; the upcoming story loads now."""
+        self._reset_browse()
         if not self.enabled:
             return
         self.current = None
@@ -313,6 +327,11 @@ class NewsFeed:
         if not self.enabled:
             return
         self._collect()
+        if self._browse_request is not None:
+            # Game-over browsing gets first use of the single worker.
+            if not self._busy:
+                self._start_browse()
+            return
         if not self.stories and not self._busy and time.time() >= self._retry_at:
             self._start(self._fetch_page, 1)
             return
@@ -327,10 +346,133 @@ class NewsFeed:
     def take(self) -> Story | None:
         """The story for the game over that just happened, if it is ready."""
         story = self.current
+        self._reset_browse()
         if story is not None:
             self.current = None
             self._armed = False
+            self._browse_page = self.page
+            self._browse_index = self.index
+            self._browse_target = (self.page, self.index)
+            self._browse_pages[self.page] = Listing(
+                self.page, list(self.stories), self.next_page)
+            self._browse_stories[(self.page, self.index)] = story
+            for index, loaded in self._loaded.items():
+                self._browse_stories[(self.page, index)] = loaded
+            if self._next_listing is not None:
+                self._browse_pages[self._next_listing.page] = self._next_listing
         return story
+
+    def take_browse(self) -> Story | None:
+        """Consume a newly selected game-over article, if one is ready."""
+        story, self._browse_ready = self._browse_ready, None
+        return story
+
+    def browse(self, delta: int) -> Story | None:
+        """Select the next (+1) or previous (-1) article from the game over.
+
+        Cached neighbours return immediately; others queue a background
+        fetch.  The current article stays on screen until the worker lands.
+        """
+        if (not self.enabled or delta == 0 or self._browse_page is None
+                or self._browse_index is None):
+            return None
+        if self._browse_request is not None or self._browse_loading:
+            return None
+        if time.time() < self._browse_error_until:
+            return None
+        target = self._adjacent_article(delta)
+        if target is None:
+            return None
+        page, index = target
+        listing = self._browse_pages.get(page)
+        if listing is not None and index < 0:
+            index = len(listing.stories) - 1
+            target = (page, index)
+        cached = self._browse_stories.get(target)
+        if cached is not None:
+            self._select_browse(page, index, cached)
+            return cached
+        self._browse_target = target
+        if listing is None:
+            self._browse_request = ("page", page, None)
+        else:
+            self._browse_request = ("story", page, index)
+        self._browse_loading = True
+        return None
+
+    @property
+    def browse_loading(self) -> bool:
+        """True while an adjacent article or its page is being fetched."""
+        return self._browse_loading or self._browse_request is not None
+
+    def _adjacent_article(self, delta: int) -> tuple[int, int] | None:
+        page, index = self._browse_page, self._browse_index
+        if page is None or index is None:
+            return None
+        listing = self._browse_pages.get(page)
+        if listing is None:
+            return None
+        if delta > 0:
+            if index + 1 < len(listing.stories):
+                return page, index + 1
+            if listing.next_page is not None:
+                return listing.next_page, 0
+            return None
+        if index > 0:
+            return page, index - 1
+        if page > 1:
+            # -1 resolves to the last story once the page listing lands.
+            return page - 1, -1
+        return None
+
+    def _select_browse(self, page: int, index: int, story: Story) -> None:
+        self._browse_page = page
+        self._browse_index = index
+        self._browse_target = (page, index)
+        self._browse_ready = story
+        self._browse_loading = False
+
+    def _cache_browse_story(self, page: int, index: int,
+                            story: Story) -> None:
+        self._browse_stories[(page, index)] = story
+        if len(self._browse_stories) <= 48:
+            return
+        # Keep the article on screen plus the newest images; older entries
+        # can be refetched if the player browses all the way back to them.
+        current_key = (self._browse_page, self._browse_index)
+        current = self._browse_stories.get(current_key)
+        self._browse_stories = dict(
+            list(self._browse_stories.items())[-32:])
+        if current is not None:
+            self._browse_stories[current_key] = current
+
+    def _start_browse(self) -> None:
+        request, self._browse_request = self._browse_request, None
+        if request is None:
+            return
+        kind, page, index = request
+        if kind == "page":
+            self._start(self._fetch_page, page, "browse")
+            return
+        listing = self._browse_pages.get(page)
+        if (listing is None or index is None
+                or not 0 <= index < len(listing.stories)):
+            self._browse_loading = False
+            self._browse_target = None
+            return
+        self._start(self._fetch_story, index, listing.stories[index],
+                    "browse", page)
+
+    def _reset_browse(self) -> None:
+        self._browse_page = None
+        self._browse_index = None
+        self._browse_ready = None
+        self._browse_target = None
+        self._browse_pages.clear()
+        self._browse_stories.clear()
+        self._browse_request = None
+        self._browse_loading = False
+        self._browse_error_until = 0.0
 
     def advance(self) -> None:
         """Move to the following story, crossing to the next page at the end."""
@@ -378,7 +520,7 @@ class NewsFeed:
         self._loaded.clear()
         self.current = None
 
-    def _fetch_page(self, page: int) -> None:
+    def _fetch_page(self, page: int, tag: str = "feed") -> None:
         try:
             if page == 1:
                 markup = _get(NEWS_URL).decode("utf-8", "replace")
@@ -389,18 +531,19 @@ class NewsFeed:
                 url = page_url(self._endpoint, self._attrs, page)
                 payload = json.loads(_get(url).decode("utf-8", "replace"))
                 listing = parse_page_payload(payload, page)
-            result = ("page", page, listing)
+            result = ("page", tag, page, listing)
         except Exception as exc:  # noqa: BLE001 - offline is not a crash
-            result = ("page", page, exc)
+            result = ("page", tag, page, exc)
         with self._lock:
             self._result = result
 
-    def _fetch_story(self, index: int, story: Story) -> None:
+    def _fetch_story(self, index: int, story: Story,
+                     tag: str = "feed", page: int = 0) -> None:
         try:
             summary = story.summary
             if _is_junk(summary, story.title):
-                page = _get(story.link).decode("utf-8", "replace")
-                summary = summary_from_article(page) or ""
+                page_markup = _get(story.link).decode("utf-8", "replace")
+                summary = summary_from_article(page_markup) or ""
             image_data = None
             if story.image_url:
                 try:
@@ -411,9 +554,9 @@ class NewsFeed:
                            link=story.link, image_url=story.image_url,
                            kind=story.kind, read_time=story.read_time,
                            image_data=image_data)
-            result = ("story", index, loaded)
+            result = ("story", tag, page, index, loaded)
         except Exception as exc:  # noqa: BLE001 - offline is not a crash
-            result = ("story", index, exc)
+            result = ("story", tag, page, index, exc)
         with self._lock:
             self._result = result
 
@@ -422,13 +565,33 @@ class NewsFeed:
             result, self._result = self._result, None
         if result is None:
             return
-        kind, index, payload = result
         self._busy = False
-        if isinstance(payload, Exception):
-            self._retry_at = time.time() + 15.0
-            return
+        kind = result[0]
         if kind == "page":
+            _, tag, page, payload = result
+            if isinstance(payload, Exception):
+                if tag == "browse":
+                    self._browse_loading = False
+                    self._browse_target = None
+                    self._browse_error_until = time.time() + 3.0
+                else:
+                    self._retry_at = time.time() + 15.0
+                return
             listing = payload
+            if tag == "browse":
+                self._browse_pages[page] = listing
+                self._browse_loading = False
+                target = self._browse_target
+                if target is not None and target[0] == page:
+                    index = target[1]
+                    if index < 0 or index >= len(listing.stories):
+                        index = len(listing.stories) - 1
+                    if 0 <= index < len(listing.stories):
+                        self._browse_target = (page, index)
+                        self._browse_request = ("story", page, index)
+                    else:
+                        self._browse_target = None
+                return
             if listing.page == 1 or listing.page == self.next_page:
                 if not self.stories:
                     self._apply_listing(listing)
@@ -436,9 +599,24 @@ class NewsFeed:
                 elif listing.page != self.page:
                     self._next_listing = listing
             return
+        _, tag, page, index, payload = result
+        if isinstance(payload, Exception):
+            if tag == "browse":
+                self._browse_loading = False
+                self._browse_target = None
+                self._browse_error_until = time.time() + 3.0
+            else:
+                self._retry_at = time.time() + 15.0
+            return
         story = payload
         story.image = decode_image(story.image_data)
         story.image_data = None
+        if tag == "browse":
+            self._cache_browse_story(page, index, story)
+            self._browse_loading = False
+            if self._browse_target == (page, index):
+                self._select_browse(page, index, story)
+            return
         self._loaded[index] = story
         if index == self.index:
             self.current = story

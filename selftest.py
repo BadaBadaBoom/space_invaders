@@ -1501,6 +1501,77 @@ def check_news() -> None:
     end.advance()
     assert end.index == 0 and end.stories[0] is a
 
+    # Game-over browsing has its own cursor: cached neighbours are immediate,
+    # page crossings follow feed order, and the archive edges stop.
+    a = Story("A", "summary", "link", "")
+    b = Story("B", "summary", "link", "")
+    c = Story("C", "summary", "link", "")
+    d = Story("D", "summary", "link", "")
+    browse = NewsFeed()
+    browse.page = 1
+    browse.stories = [a, b, c]
+    browse.next_page = 2
+    browse._loaded = {0: a, 1: b, 2: c}
+    browse.begin_round()
+    assert browse.take() is a
+    browse.advance()
+    feed_index = browse.index
+    assert browse.browse(1) is b
+    assert browse.take_browse() is b
+    assert browse.browse(1) is c
+    assert browse.take_browse() is c
+    browse._browse_pages[2] = Listing(2, [d], None)
+    browse._browse_stories[(2, 0)] = d
+    assert browse.browse(1) is d
+    assert browse.take_browse() is d
+    assert browse.browse(1) is None, "browsing wrapped past the archive"
+    assert browse.browse(-1) is c, "browsing did not cross back a page"
+    assert browse.take_browse() is c
+    assert browse.page == 1 and browse.index == feed_index, (
+        "article browsing moved the next-run feed cursor")
+
+    # Uncached neighbours queue one background request at a time.
+    pending = NewsFeed()
+    pending.page = 1
+    pending.stories = [a, b]
+    pending._loaded = {0: a}
+    pending.begin_round()
+    assert pending.take() is a
+    pending.advance()
+    assert pending.browse(1) is None
+    assert pending.browse_loading
+    assert pending._browse_request == ("story", 1, 1)
+    assert pending.browse(1) is None, "queued a second browse request"
+    pending._browse_request = None       # the worker has started
+    pending._result = ("story", "browse", 1, 1,
+                       Story("B2", "summary", "link", ""))
+    pending._collect()
+    assert pending.take_browse().title == "B2"
+    assert not pending.browse_loading
+
+    crossing = NewsFeed()
+    crossing.page = 1
+    crossing.stories = [a]
+    crossing._loaded = {0: a}
+    crossing.next_page = 7
+    crossing.begin_round()
+    assert crossing.take() is a
+    crossing.advance()
+    assert crossing.browse(1) is None
+    assert crossing._browse_request == ("page", 7, None), (
+        "crossing a page did not queue the page fetch")
+    crossing._browse_request = None      # the worker has started
+    crossing._result = ("page", "browse", 7, Listing(7, [d], None))
+    crossing._collect()
+    assert crossing._browse_request == ("story", 7, 0), (
+        "page arrival did not queue its first story")
+    crossing._browse_request = None      # the worker has started
+    crossing._result = ("story", "browse", 7, 0,
+                        Story("D2", "summary", "link", ""))
+    crossing._collect()
+    assert crossing.take_browse().title == "D2"
+    assert not crossing.browse_loading
+
 
 def check_stats() -> None:
     """Hit accuracy and bunker destruction track exactly the requested rules."""
