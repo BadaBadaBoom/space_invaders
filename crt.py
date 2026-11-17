@@ -54,6 +54,8 @@ class CrtOverlay:
         self._out: pygame.Surface | None = None
         self._prev: pygame.Surface | None = None
         self._snap: pygame.Surface | None = None
+        self._bloom_small: pygame.Surface | None = None
+        self._bloom: pygame.Surface | None = None
         self._tint: pygame.Surface | None = None
         self._band: pygame.Surface | None = None
         self._noise: pygame.Surface | None = None
@@ -84,6 +86,8 @@ class CrtOverlay:
         self._out = None
         self._prev = None
         self._snap = None
+        self._bloom_small = None
+        self._bloom = None
         self._build()
 
     def _build(self) -> None:
@@ -217,11 +221,17 @@ class CrtOverlay:
 
         if cfg["bloom"]:
             w, h = self.size
-            small = pygame.transform.smoothscale(
-                src, (max(1, w // 6), max(1, h // 6)))
-            halo = pygame.transform.smoothscale(small, self.size)
-            halo.set_alpha(int(cfg["bloom"]))
-            out.blit(halo, (0, 0), special_flags=pygame.BLEND_ADD)
+            small_size = (max(1, w // 6), max(1, h // 6))
+            if (self._bloom_small is None
+                    or self._bloom_small.get_size() != small_size):
+                self._bloom_small = pygame.Surface(small_size)
+            pygame.transform.smoothscale(src, small_size, self._bloom_small)
+            if self._bloom is None or self._bloom.get_size() != self.size:
+                self._bloom = pygame.Surface(self.size)
+            pygame.transform.smoothscale(self._bloom_small, self.size,
+                                         self._bloom)
+            self._bloom.set_alpha(int(cfg["bloom"]))
+            out.blit(self._bloom, (0, 0), special_flags=pygame.BLEND_ADD)
 
         if self._tint is not None:
             out.blit(self._tint, (0, 0), special_flags=pygame.BLEND_RGB_MULT)

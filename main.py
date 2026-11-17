@@ -72,6 +72,7 @@ MUSIC_DUCK_LEVELS = {
     "playing": 1.0,
     "title": 1.0,
     "paused": MUSIC_DUCK_PAUSED,
+    "help": MUSIC_DUCK_PAUSED,
     "scores": MUSIC_DUCK_SCORES,
     "gameover": MUSIC_DUCK_GAMEOVER,
 }
@@ -219,9 +220,16 @@ def main() -> int:
                         game.scroll_scores(LEADERBOARD_SIZE)
                     elif event.key == pygame.K_DELETE:
                         game.clear_scores()
+                    elif event.key == pygame.K_h:
+                        game.toggle_help()
                     else:
                         # Any other key cancels a pending erase.
                         game.clear_armed = False
+                    continue
+                if game.state == "help":
+                    if event.key in (pygame.K_h, pygame.K_ESCAPE,
+                                     pygame.K_RETURN):
+                        game.close_help()
                     continue
                 if event.key == pygame.K_ESCAPE:
                     if fullscreen:
@@ -246,6 +254,8 @@ def main() -> int:
                                 pygame.time.get_ticks() + 1400)
                 elif event.key == pygame.K_l:
                     game.show_scores()
+                elif event.key == pygame.K_h:
+                    game.toggle_help()
                 elif event.key == pygame.K_RETURN and game.state in ("title", "gameover"):
                     game.start()
                     story_assigned = False

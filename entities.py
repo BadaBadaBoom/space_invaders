@@ -234,11 +234,17 @@ class Shield:
 
     def hit_cell(self, rect: pygame.Rect, vy: float) -> tuple[int, int] | None:
         """First live cell the rect touches, scanning along the bullet's path."""
-        hits = [(r, c) for r, c in self._cells_in(rect) if self.cells[r][c]]
-        if not hits:
+        first = last = None
+        # _cells_in yields row-major, so the first and last live cells seen
+        # are the min and max; no list or sort is needed.
+        for r, c in self._cells_in(rect):
+            if self.cells[r][c]:
+                if first is None:
+                    first = (r, c)
+                last = (r, c)
+        if first is None:
             return None
-        hits.sort()
-        return hits[0] if vy >= 0 else hits[-1]
+        return first if vy >= 0 else last
 
     def damage(self, row: int, col: int, radius: float = 2.2) -> int:
         """Blast a crater; return how many cells were actually destroyed."""

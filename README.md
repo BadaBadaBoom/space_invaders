@@ -108,6 +108,7 @@ and painted backdrops, but no soundtrack.
 | double-tap `←` / `→` | Dash: 126 px burst, 1.2 s cooldown |
 | `Space` | Fire (max 3 shots on screen) |
 | `P` | Pause / resume (the pause screen summarises the run) |
+| `H` | Help card: every command plus an illustrated guide to the power-up capsules |
 | `L` | High-score leaderboard (up/down, `PageUp`/`PageDown` or the mouse wheel to scroll) |
 | `Delete` | On the leaderboard: erase every saved score (press twice) |
 | `M` | Mute / unmute music |
@@ -148,9 +149,9 @@ sitting on top of the crossfade.  Track length is tuned by `MUSIC_SHORTEN` in
 current wave.
 
 The soundtrack follows the game's state too: it **ducks smoothly** to 35% on
-pause and 45% on the leaderboard, fades out for game over, and swells back to
-full on resume or restart.  The fade time and each level are set by
-`MUSIC_DUCK_FADE`, `MUSIC_DUCK_PAUSED`, `MUSIC_DUCK_SCORES` and
+pause and the help card, 45% on the leaderboard, fades out for game over, and
+swells back to full on resume or restart.  The fade time and each level are set
+by `MUSIC_DUCK_FADE`, `MUSIC_DUCK_PAUSED`, `MUSIC_DUCK_SCORES` and
 `MUSIC_DUCK_GAMEOVER` in `config.py`.
 
 Every wave gets a different **genre**, drawn from a shuffled bag so all seven
@@ -295,6 +296,12 @@ nearly out. A repair capsule only drops when a bunker is actually damaged, and
 the rebuilt cells count as deployed, so the run's bunker percentage stays
 meaningful.
 
+Press **H** at any time for the help card: it lists every command and shows
+each capsule at illustration size with its effect and duration. The card
+freezes the fight while it is open, returns to whatever screen it was opened
+from, and is also reachable from the title, pause, game-over and leaderboard
+screens.
+
 ## Boss waves
 
 Every fifth wave fields one wide machine instead of the formation. A longer
@@ -389,6 +396,19 @@ to 100% in 10% steps. The defaults are `CRT_DEFAULT = "medium"` and
 pass runs on the 800×600 canvas, so its cost stays fixed regardless of window
 size, and `off` or 0% intensity skips it entirely.
 
+## Rendering caches
+
+The canvas is still redrawn every frame, but the parts that never change are
+painted once. The gradient and the active cover are baked into a single opaque
+backdrop per wave (blitting a semi-transparent full-screen cover every frame
+was by far the largest draw cost), invader sprites are cached per wave look,
+colour and animation frame, HUD/menu labels come from a small text cache, and
+the game-over card and help-card power-up icons are built once and reused.
+Bullet and power-up glows are cached, drifter fades scale the shared tile
+instead of copying it, collisions avoid per-bullet sorts, and the CRT bloom
+reuses its scaled surfaces. In the headless benchmark the full update/draw/
+present loop roughly halved, with the draw pass about twice as fast.
+
 ## What's in it
 
 - 4 rows × 8 aliens, each row worth a different number of points, and the
@@ -426,9 +446,10 @@ size, and `off` or 0% intensity skips it entirely.
 - Game over when you run out of lives **or** the formation reaches the landing line
 - Title, pause, and game-over screens: an attract-mode fleet and saucer
   behind the title, a pause card with score/wave/lives/accuracy, and a
-  game-over card that fades in over the death beat; a starfield plus a fresh
-  1960s cover backdrop each wave, crossfaded in; particle debris; procedural
-  sound effects and a different music genre per wave
+  game-over card that fades in over the death beat; a help card on **H** with
+  every command and a picture of each power-up capsule; a starfield plus a
+  fresh 1960s cover backdrop each wave, crossfaded in; particle debris;
+  procedural sound effects and a different music genre per wave
 - **Hit feedback**: the whole view jolts when the ship takes a hit, a little
   when you shoot an avatar badge, and hard when you beat the board's best;
   every score award floats up as a fading number, and the HUD tracks the
@@ -532,7 +553,11 @@ the overdrive trigger, kill payout and victory pause), the dash (double-tap
 window, burst over held input, wall clamp, cooldown, invulnerability and
 dash-through kills), the flow beats (wave cards freeze and release the sim, the
 `+100` bonus lands after the card, the death burst and red vignette fire, the
-game-over card fades in, and the pause summary paints), the feel pass (muzzle
+game-over card fades in, and the pause summary paints), the help card (opens
+from the title, play, pause, game over and leaderboard, freezes the fight
+while open, returns to the same screen, and has a cached illustration for
+every power-up), the render caches (label, sprite and backdrop reuse, bounded
+backdrop storage, and game-over-card invalidation), the feel pass (muzzle
 flash, movement lean, kill chains and expiry, cover crossfade, title attract
 loop), leaderboard landing (auto-scroll to a low-ranked new entry, top of the
 table from the title), audio ducking, that each wave paints a different
@@ -556,7 +581,9 @@ the card holds the fight), `GAMEOVER_FADE` (game-over layer fade-in) and
 `COVER_FADE_TIME` (backdrop crossfade).
 
 The CRT defaults are in `config.py`: `CRT_DEFAULT` (`"off"`, `"low"`,
-`"medium"` or `"high"`) and `CRT_INTENSITY` (0.0–1.0).
+`"medium"` or `"high"`) and `CRT_INTENSITY` (0.0–1.0). The dark wash behind the
+title, pause and help cards is `OVERLAY_DIM`; the leaderboard uses the heavier
+`SCORES_DIM`.
 
 The hazards are tuned by `DRIFTER_SIZE`, `DRIFTER_SPEED_MIN`/`MAX`,
 `DRIFTER_SPAWN_DELAY`, `DRIFTER_RESPAWN`, `DRIFTER_LIFE`,

@@ -49,11 +49,15 @@ from config import (
     PLAYER_BULLET_SPEED,
     PLAYER_FIRE_COOLDOWN,
     PLAYER_W,
+    POWERUP_COLORS,
+    POWERUP_KINDS,
+    POWERUP_LABELS,
     POWERUP_RAPID_SCALE,
     POWERUP_RAPID_TIME,
     POWERUP_SIZE,
     POWERUP_TRIPLE_TIME,
     RIGHT_WALL,
+    ROW_COLORS,
     ROW_POINTS,
     ROWS,
     RECORD_BANNER_TIME,
@@ -72,6 +76,8 @@ from config import (
     UFO_RESPAWN,
     UFO_SPEED_MIN,
     UFO_Y,
+    UI_COLOR,
+    UI_RECORD,
     WAVE_INTRO_BOSS_TIME,
     WAVE_INTRO_TIME,
     WIDTH,
@@ -100,6 +106,8 @@ def selftest(seconds: float) -> int:
 
     check_shields(scores)
     check_flow()
+    check_help()
+    check_render_caches()
     check_feel()
     check_leaderboard_landing()
     check_drifters(scores)
@@ -245,6 +253,107 @@ def check_flow() -> None:
     game.draw(game.canvas)
     game.update_feedback(GAMEOVER_FADE)
     assert game.game_over_time == GAMEOVER_FADE
+
+
+def check_help() -> None:
+    """H opens a frozen help card with an illustration of every power-up."""
+    game = Game(seed=61)
+    game.start()
+    game.wave_intro_time = 0.0
+    fleet_x = game.aliens[0].x
+    game.toggle_help()
+    assert game.state == "help"
+    assert game.help_return_state == "playing"
+    game.update(1 / 60, 1, True)
+    assert game.aliens[0].x == fleet_x, "the fight advanced behind the help card"
+    game.draw(game.canvas)
+
+    for kind in POWERUP_KINDS:
+        assert kind in POWERUP_LABELS and kind in POWERUP_COLORS
+        icon = game._powerup_icon(kind)
+        assert icon.get_width() >= POWERUP_SIZE * 2, "power-up icon is too small"
+        assert game._powerup_icon(kind) is icon, "power-up icon was rebuilt"
+    assert len(game._help_icons) == len(POWERUP_KINDS)
+
+    game.close_help()
+    assert game.state == "playing"
+    # Closing outside the card is harmless.
+    game.close_help()
+    assert game.state == "playing"
+
+    # Every screen that can open the card gets the same state back.
+    for state in ("title", "paused", "gameover", "scores"):
+        game.state = state
+        game.toggle_help()
+        assert game.state == "help" and game.help_return_state == state
+        game.draw(game.canvas)
+        game.close_help()
+        assert game.state == state, f"help did not return to {state}"
+
+
+def check_render_caches() -> None:
+    """Stable paint work is cached, stays distinct, and invalidates correctly."""
+    game = Game(seed=71)
+    game.start()
+    game.wave_intro_time = 0.0
+
+    # Labels are shared per font/text/colour and never across colours.
+    first = game.text(game.font_small, "CACHE TEST", UI_COLOR)
+    assert game.text(game.font_small, "CACHE TEST", UI_COLOR) is first
+    assert game.text(game.font_small, "CACHE TEST", UI_RECORD) is not first
+    assert game.text(game.font_tiny, "CACHE TEST", UI_COLOR) is not first
+
+    # Invader sprites cache per look/colour/frame and cover their full paint
+    # area, including headgear above and the widest leg pose below the box.
+    look = alien_look(5)
+    sprite = game.alien_sprite(ROW_COLORS[0], 1, look)
+    assert game.alien_sprite(ROW_COLORS[0], 1, look) is sprite
+    assert game.alien_sprite(ROW_COLORS[1], 1, look) is not sprite
+    assert sprite.get_size() == (ALIEN_W, ALIEN_H + 3)
+
+    # A cover is composited with the gradient once; the fading cover gets its
+    # own cached composite, and the cache never keeps more than two covers.
+    old_cover = pygame.Surface((WIDTH, HEIGHT))
+    old_cover.fill((30, 20, 50))
+    old_cover.set_alpha(64)
+    game.adopt_cover(old_cover)
+    game._backdrop(game.pulp_bg)
+    base = game._backdrop(old_cover)
+    assert game._backdrop(old_cover) is base
+    assert game._backdrop(game._bg_prev) is not base
+    game._bg_fade = COVER_FADE_TIME / 2
+    game.draw(game.canvas)
+    for i in range(3):
+        cover = pygame.Surface((WIDTH, HEIGHT))
+        cover.fill((20 + i * 20, 30, 40))
+        game.adopt_cover(cover)
+        game._backdrop(cover)
+    assert len(game._bg_composites) <= 2, "backdrop cache grew unbounded"
+
+    # The finished game-over card is reused while only its fade changes, and
+    # rebuilt when the contents do.
+    game.state = "gameover"
+    game.story = None
+    game.last_rank = None
+    game.game_over_time = GAMEOVER_FADE / 2
+    game.draw(game.canvas)
+    layer = game._gameover_layer
+    assert layer is not None
+    game.game_over_time = GAMEOVER_FADE
+    game.draw(game.canvas)
+    assert game._gameover_layer is layer, "fade rebuilt the game-over card"
+    game.score += 1
+    game.draw(game.canvas)
+    assert game._gameover_layer is not layer, "score change reused the old card"
+
+    # A scaled presentation surface is reused between frames.
+    screen = pygame.display.set_mode((1280, 960))
+    game.draw(game.canvas)
+    game.present(screen)
+    scaled = game._scaled
+    game.present(screen)
+    assert scaled is not None and game._scaled is scaled
+    pygame.display.set_mode((WIDTH, HEIGHT))
 
 
 def check_feel() -> None:

@@ -32,12 +32,14 @@ from config import (
     LEADERBOARD_ROWS,
     LEFT_WALL,
     MUZZLE_FLASH_TIME,
+    OVERLAY_DIM,
     PLAYER_BULLET_COLOR,
     PLAYER_COLOR,
     PLAYER_H,
     PLAYER_W,
     POPUP_RISE,
     POWERUP_COLORS,
+    POWERUP_KINDS,
     POWERUP_LABELS,
     POWERUP_RAPID_TIME,
     POWERUP_SIZE,
@@ -46,6 +48,7 @@ from config import (
     RECORD_BANNER_TIME,
     RIGHT_WALL,
     ROW_COLORS,
+    SCORES_DIM,
     SHIELD_TOP_COLOR,
     SHAKE_BANNER,
     SHAKE_DECAY,
@@ -153,6 +156,69 @@ def wrap_text(font: pygame.font.Font, text: str, width: int,
 
 
 class RenderMixin:
+    # -- cached paint helpers --------------------------------------------- #
+
+    def text(self, font: pygame.font.Font, text: str,
+             colour: tuple[int, int, int]) -> pygame.Surface:
+        """Render *text* once and reuse it while the label is unchanged.
+
+        Menus and the HUD redraw the same short strings every frame, and a
+        FreeType render costs far more than the dict lookup that replaces it.
+        """
+        key = (id(font), text, colour)
+        cache = self._text_cache
+        surface = cache.get(key)
+        if surface is None:
+            surface = font.render(text, True, colour)
+            if len(cache) >= 256:
+                cache.clear()
+            cache[key] = surface
+        return surface
+
+    def _shade(self, alpha: int) -> pygame.Surface:
+        """A full-screen dimming layer, built once per alpha level."""
+        shade = self._shade_cache.get(alpha)
+        if shade is None:
+            shade = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            shade.fill((6, 8, 20, alpha))
+            self._shade_cache[alpha] = shade
+        return shade
+
+    def _gradient(self) -> pygame.Surface:
+        """The dark sky band behind the covers, painted once."""
+        gradient = self._bg_gradient
+        if gradient is None:
+            gradient = pygame.Surface((WIDTH, HEIGHT))
+            for y in range(0, HEIGHT, 6):
+                t = y / HEIGHT
+                colour = tuple(int(BG_TOP[i] + (BG_BOTTOM[i] - BG_TOP[i]) * t)
+                               for i in range(3))
+                gradient.fill(colour, (0, y, WIDTH, 6))
+            self._bg_gradient = gradient
+        return gradient
+
+    def _backdrop(self, cover: pygame.Surface) -> pygame.Surface:
+        """Gradient composited under *cover*, cached until the cover changes.
+
+        Covers carry a global alpha, so blitting one straight onto the canvas
+        every frame forces pygame down its per-pixel blend path.  Baking the
+        composite once turns that into a plain opaque blit for every frame of
+        the wave.
+        """
+        key = id(cover)
+        cache = self._bg_composites
+        entry = cache.get(key)
+        if entry is not None and entry[0] is cover:
+            return entry[1]
+        backdrop = self._gradient().copy()
+        backdrop.blit(cover, (0, 0))
+        # Keep only the active cover and the one fading out behind it; the
+        # stored surface keeps its id from being reused while cached.
+        cache[key] = (cover, backdrop)
+        if len(cache) > 2:
+            cache.pop(next(iter(cache)))
+        return backdrop
+
     # -- backdrop transitions --------------------------------------------- #
 
     def adopt_cover(self, new_bg: pygame.Surface) -> None:
@@ -304,27 +370,27 @@ class RenderMixin:
         self.draw_record_banner(surface)
 
     def draw_background(self, surface: pygame.Surface) -> None:
-        for y in range(0, HEIGHT, 6):
-            t = y / HEIGHT
-            color = tuple(int(BG_TOP[i] + (BG_BOTTOM[i] - BG_TOP[i]) * t) for i in range(3))
-            pygame.draw.rect(surface, color, (0, y, WIDTH, 6))
-        if self.pulp_bg is not None:
-            previous = getattr(self, "_bg_prev", None)
-            if previous is not None and getattr(self, "_bg_fade", 1.0) < 1.0:
-                surface.blit(previous, (0, 0))
-                cover = self.pulp_bg
-                base_alpha = cover.get_alpha()
-                if base_alpha is None:
-                    base_alpha = 255
-                cover.set_alpha(int(base_alpha * self._bg_fade))
-                surface.blit(cover, (0, 0))
-                cover.set_alpha(base_alpha)
-            else:
-                surface.blit(self.pulp_bg, (0, 0))
+        cover = self.pulp_bg
+        previous = getattr(self, "_bg_prev", None)
+        fade = getattr(self, "_bg_fade", 1.0)
+        if cover is None:
+            surface.blit(self._gradient(), (0, 0))
+        elif previous is not None and fade < 1.0:
+            # The old cover is already fully baked; only the incoming one
+            # still needs its alpha scaled for the crossfade.
+            surface.blit(self._backdrop(previous), (0, 0))
+            stored_alpha = cover.get_alpha()
+            base_alpha = 255 if stored_alpha is None else stored_alpha
+            cover.set_alpha(int(base_alpha * fade))
+            surface.blit(cover, (0, 0))
+            cover.set_alpha(stored_alpha)
+        else:
+            surface.blit(self._backdrop(cover), (0, 0))
+        ticks = pygame.time.get_ticks() / 900
         for x, y, size, speed in self.stars:
-            twinkle = 90 + int(80 * (0.5 + 0.5 * math.sin(pygame.time.get_ticks() / 900 + speed)))
-            pygame.draw.rect(surface, (twinkle, twinkle, min(255, twinkle + 40)),
-                             (int(x), int(y), size, size))
+            twinkle = 90 + int(80 * (0.5 + 0.5 * math.sin(ticks + speed)))
+            pygame.draw.rect(surface, (twinkle, twinkle, twinkle + 40),
+                             (x, y, size, size))
 
     def draw_walls(self, surface: pygame.Surface) -> None:
         for x in (LEFT_WALL, RIGHT_WALL):
@@ -382,10 +448,31 @@ class RenderMixin:
                 (int(bx - px * half), int(by - py * half)),
             ))
 
+    def alien_sprite(self, color: tuple[int, int, int], frame: int,
+                     look: AlienLook) -> pygame.Surface:
+        """A pre-painted invader, cached by wave look, frame, and row colour."""
+        key = (color, frame, look)
+        cache = self._alien_sprites
+        sprite = cache.get(key)
+        if sprite is None:
+            # Headgear reaches two pixels above the sprite box and the widest
+            # leg pose one pixel below it, so include that full paint area.
+            sprite = pygame.Surface((ALIEN_W, ALIEN_H + 3), pygame.SRCALPHA)
+            self._paint_alien_sprite(sprite, 0, 2, color, frame, look)
+            if len(cache) >= 48:
+                cache.clear()
+            cache[key] = sprite
+        return sprite
+
     def draw_alien_sprite(self, surface: pygame.Surface, x: int, y: int,
                           color: tuple[int, int, int], frame: int,
                           look: AlienLook | None = None) -> None:
         look = look or DEFAULT_LOOK
+        surface.blit(self.alien_sprite(color, frame, look), (x, y - 2))
+
+    def _paint_alien_sprite(self, surface: pygame.Surface, x: int, y: int,
+                            color: tuple[int, int, int], frame: int,
+                            look: AlienLook) -> None:
         w, h = ALIEN_W, ALIEN_H
         dark = (20, 20, 35)
         body = pygame.Rect(x + 4, y + 2, w - 8, h - 10)
@@ -592,24 +679,56 @@ class RenderMixin:
         for d in self.drifters:
             fade = getattr(d, "fade", 1.0)
             if fade < 1.0:
-                # fade multiplies the sprite's own alpha: copy so the shared
-                # alpha-cut image is never modified.
-                image = d.image.copy()
-                image.set_alpha(max(0, min(255, round(255 * fade))))
-                surface.blit(image, (int(d.x), int(d.y)))
+                # Scale the shared tile's global alpha for the blit and put it
+                # back afterwards.  Copying the sprite every frame just to
+                # adjust one channel was the expensive part.
+                stored = d.image.get_alpha()
+                d.image.set_alpha(max(0, min(255, round(255 * fade))))
+                surface.blit(d.image, (int(d.x), int(d.y)))
+                d.image.set_alpha(stored)
             else:
                 surface.blit(d.image, (int(d.x), int(d.y)))
 
+    def _bullet_glow(self) -> pygame.Surface:
+        """The soft halo behind a player shot, painted once."""
+        glow = getattr(self, "_bullet_glow_surface", None)
+        if glow is None:
+            # Player shots are 4 x 14; sit the halo 4 px outside that box.
+            glow = pygame.Surface((12, 22), pygame.SRCALPHA)
+            pygame.draw.rect(glow, (*PLAYER_BULLET_COLOR, 60),
+                             glow.get_rect(), border_radius=4)
+            self._bullet_glow_surface = glow
+        return glow
+
     def draw_bullets(self, surface: pygame.Surface) -> None:
+        glow = self._bullet_glow()
         for b in self.player_bullets:
             r = b.rect()
             pygame.draw.rect(surface, PLAYER_BULLET_COLOR, r, border_radius=2)
-            glow = pygame.Surface((r.width + 8, r.height + 8), pygame.SRCALPHA)
-            pygame.draw.rect(glow, (*PLAYER_BULLET_COLOR, 60), glow.get_rect(), border_radius=4)
             surface.blit(glow, (r.x - 4, r.y - 4))
         for b in self.alien_bullets:
             r = b.rect()
             pygame.draw.rect(surface, ALIEN_BULLET_COLOR, r, border_radius=3)
+
+    def _powerup_sprite(self, kind: str,
+                        colour: tuple[int, int, int]) -> pygame.Surface:
+        """A capsule's body and label, painted once per kind."""
+        key = kind
+        cache = self._powerup_sprites
+        sprite = cache.get(key)
+        if sprite is None:
+            sprite = pygame.Surface((POWERUP_SIZE, POWERUP_SIZE),
+                                    pygame.SRCALPHA)
+            rect = sprite.get_rect()
+            pygame.draw.rect(sprite, colour, rect, border_radius=5)
+            pygame.draw.rect(sprite, (18, 20, 34), rect, width=2,
+                             border_radius=5)
+            label = self.text(self.font_tiny, POWERUP_LABELS[kind],
+                              (18, 20, 34))
+            sprite.blit(label, (rect.centerx - label.get_width() // 2,
+                                rect.centery - label.get_height() // 2))
+            cache[key] = sprite
+        return sprite
 
     def draw_powerups(self, surface: pygame.Surface) -> None:
         tick = pygame.time.get_ticks()
@@ -618,17 +737,16 @@ class RenderMixin:
             bob = int(math.sin(tick / 170.0 + powerup.x * 0.05) * 1.5)
             rect = pygame.Rect(int(powerup.x), int(powerup.y) + bob,
                                POWERUP_SIZE, POWERUP_SIZE)
-            glow = pygame.Surface((rect.w + 12, rect.h + 12), pygame.SRCALPHA)
-            pygame.draw.rect(glow, (*colour, 50), glow.get_rect(),
-                             border_radius=10)
+            glow = self._powerup_glows.get(colour)
+            if glow is None:
+                glow = pygame.Surface((rect.w + 12, rect.h + 12),
+                                      pygame.SRCALPHA)
+                pygame.draw.rect(glow, (*colour, 50), glow.get_rect(),
+                                 border_radius=10)
+                self._powerup_glows[colour] = glow
             surface.blit(glow, (rect.x - 6, rect.y - 6))
-            pygame.draw.rect(surface, colour, rect, border_radius=5)
-            pygame.draw.rect(surface, (18, 20, 34), rect, width=2,
-                             border_radius=5)
-            label = self.font_tiny.render(POWERUP_LABELS[powerup.kind],
-                                          True, (18, 20, 34))
-            surface.blit(label, (rect.centerx - label.get_width() // 2,
-                                 rect.centery - label.get_height() // 2))
+            surface.blit(self._powerup_sprite(powerup.kind, colour),
+                         rect.topleft)
 
     def draw_ship(self, surface: pygame.Surface, x: int, y: int,
                   colour: tuple[int, int, int], lean: int = 0) -> None:
@@ -732,10 +850,9 @@ class RenderMixin:
     def draw_hud(self, surface: pygame.Surface) -> None:
         # Live record: follows the running score the moment it passes the board.
         best = max(self.leaderboard.best, self.score)
-        best_text = self.font_small.render(
-            f"BEST {best:05d}", True, UI_RECORD)
-        score_text = self.font_small.render(
-            f"SCORE {self.score:05d}", True, UI_COLOR)
+        best_text = self.text(self.font_small, f"BEST {best:05d}", UI_RECORD)
+        score_text = self.text(self.font_small, f"SCORE {self.score:05d}",
+                               UI_COLOR)
 
         # A small dark plate with a light rim sits behind the two live numbers
         # so they stay readable over any cover art.  Their widths are fixed
@@ -754,19 +871,19 @@ class RenderMixin:
         surface.blit(self._hud_plate, (LEFT_WALL - 8, 0))
 
         # A 1px shadow on top of the plate keeps the glyph edges crisp.
-        best_shadow = self.font_small.render(
-            f"BEST {best:05d}", True, (10, 10, 20))
-        score_shadow = self.font_small.render(
-            f"SCORE {self.score:05d}", True, (10, 10, 20))
+        best_shadow = self.text(self.font_small, f"BEST {best:05d}",
+                                (10, 10, 20))
+        score_shadow = self.text(self.font_small, f"SCORE {self.score:05d}",
+                                 (10, 10, 20))
         surface.blit(best_shadow, (LEFT_WALL + 1, 2))
         surface.blit(best_text, (LEFT_WALL, 1))
         surface.blit(score_shadow, (LEFT_WALL + 1, 24))
         surface.blit(score_text, (LEFT_WALL, 23))
-        wave = self.font_small.render(f"WAVE {self.wave}", True, UI_DIM)
+        wave = self.text(self.font_small, f"WAVE {self.wave}", UI_DIM)
         surface.blit(wave, (WIDTH // 2 - wave.get_width() // 2, 24))
         if self.music_genre:
-            label = self.font_small.render(
-                f"({self.music_genre})", True, (80, 88, 130))
+            label = self.text(self.font_small, f"({self.music_genre})",
+                              (80, 88, 130))
             surface.blit(label, (WIDTH // 2 - label.get_width() // 2, 44))
 
         # Fleet progress: the whole formation as a dot map, dimmed where the
@@ -809,8 +926,8 @@ class RenderMixin:
                 chain_colour = (255, 120, 140)
             else:
                 chain_colour = (255, 220, 120)
-            chain = self.font_tiny.render(f"CHAIN {self.combo}", True,
-                                          chain_colour)
+            chain = self.text(self.font_tiny, f"CHAIN {self.combo}",
+                              chain_colour)
             surface.blit(chain, (132, 43))
             track = pygame.Rect(132, 59, chain.get_width(), 3)
             pygame.draw.rect(surface, (42, 38, 54), track)
@@ -843,13 +960,13 @@ class RenderMixin:
         if boosts:
             x = RIGHT_WALL
             for name, remaining, duration, colour in reversed(boosts):
-                label = self.font_tiny.render(name, True, colour)
+                label = self.text(self.font_tiny, name, colour)
                 bar_w = 44
                 total = label.get_width() + 6 + bar_w
                 x -= total
                 if remaining < 2.0 and int(remaining * 8) % 2 == 0:
                     colour = (255, 110, 120)
-                text = self.font_tiny.render(name, True, colour)
+                text = self.text(self.font_tiny, name, colour)
                 surface.blit(text, (x, 42))
                 track = pygame.Rect(x + label.get_width() + 6, 48, bar_w, 6)
                 pygame.draw.rect(surface, (38, 40, 60), track,
@@ -864,11 +981,11 @@ class RenderMixin:
 
     def draw_leaderboard(self, surface: pygame.Surface) -> None:
         """Scrollable top-100 table of run scores and shooting stats."""
-        title = self.font_big.render("HIGH SCORES", True, (255, 240, 190))
+        title = self.text(self.font_big, "HIGH SCORES", (255, 240, 190))
         surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 16))
-        caption = self.font_tiny.render(
-            "BUNKER % = BUNKER CELLS WRECKED BY YOUR OWN BULLETS",
-            True, UI_DIM)
+        caption = self.text(
+            self.font_tiny,
+            "BUNKER % = BUNKER CELLS WRECKED BY YOUR OWN BULLETS", UI_DIM)
         surface.blit(caption, (WIDTH // 2 - caption.get_width() // 2, 84))
 
         columns = (
@@ -880,17 +997,17 @@ class RenderMixin:
             ("ACCURACY", 740),
         )
         for label, right in columns:
-            text = self.font_tiny.render(label, True, (255, 220, 120))
+            text = self.text(self.font_tiny, label, (255, 220, 120))
             surface.blit(text, (right - text.get_width(), 112))
-        name_head = self.font_tiny.render("NAME", True, (255, 220, 120))
+        name_head = self.text(self.font_tiny, "NAME", (255, 220, 120))
         surface.blit(name_head, (96, 112))
         pygame.draw.line(surface, (90, 96, 140), (44, 132), (756, 132), 1)
 
         entries = self.leaderboard.entries
         if not entries:
-            empty = self.font_mid.render("NO SCORES YET", True, UI_DIM)
-            hint = self.font_small.render(
-                "Finish a run to claim a spot.", True, UI_DIM)
+            empty = self.text(self.font_mid, "NO SCORES YET", UI_DIM)
+            hint = self.text(self.font_small,
+                             "Finish a run to claim a spot.", UI_DIM)
             surface.blit(empty, (WIDTH // 2 - empty.get_width() // 2, 260))
             surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 306))
         else:
@@ -911,10 +1028,10 @@ class RenderMixin:
                 if highlighted:
                     colour = (255, 230, 140)
                 name = str(entry.get("name") or "???")
-                name_text = self.font_small.render(name, True, colour)
+                name_text = self.text(self.font_small, name, colour)
                 surface.blit(name_text, (96, y))
                 if highlighted:
-                    tag = self.font_tiny.render("NEW", True, (255, 225, 120))
+                    tag = self.text(self.font_tiny, "NEW", (255, 225, 120))
                     surface.blit(tag, (96 + name_text.get_width() + 7, y + 2))
                 values = (
                     (f"{rank}", 80),
@@ -925,7 +1042,7 @@ class RenderMixin:
                     (f"{entry['accuracy']:.1f}%", 740),
                 )
                 for value, right in values:
-                    text = self.font_small.render(value, True, colour)
+                    text = self.text(self.font_small, value, colour)
                     surface.blit(text, (right - text.get_width(), y))
 
             # Scrollbar shows where the visible window sits in the full table.
@@ -943,22 +1060,25 @@ class RenderMixin:
                                  border_radius=2)
 
             end = start + len(visible)
-            footer = self.font_tiny.render(
-                f"SHOWING {start + 1}-{end} OF {len(entries)}", True, UI_DIM)
+            footer = self.text(
+                self.font_tiny,
+                f"SHOWING {start + 1}-{end} OF {len(entries)}", UI_DIM)
             surface.blit(footer, (WIDTH // 2 - footer.get_width() // 2, 540))
 
         armed = (self.clear_armed
                  and pygame.time.get_ticks() < self.clear_hint_until)
         if armed:
-            hint = self.font_tiny.render(
+            hint = self.text(
+                self.font_tiny,
                 f"ERASE ALL {len(entries)} SCORES?  PRESS DELETE AGAIN",
-                True, (255, 120, 140))
+                (255, 120, 140))
         elif entries:
-            hint = self.font_tiny.render(
-                "UP / DOWN  SCROLL      L / ESC  BACK      DELETE  ERASE ALL",
-                True, UI_DIM)
+            hint = self.text(
+                self.font_tiny,
+                "UP/DOWN SCROLL   L/ESC BACK   H HELP   DELETE ERASE",
+                UI_DIM)
         else:
-            hint = self.font_tiny.render("L / ESC  BACK", True, UI_DIM)
+            hint = self.text(self.font_tiny, "L / ESC  BACK", UI_DIM)
         surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 566))
 
     def draw_overlay(self, surface: pygame.Surface) -> None:
@@ -969,21 +1089,22 @@ class RenderMixin:
         if self.state == "gameover":
             self.draw_gameover_overlay(surface)
             return
-        shade = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        shade.fill((6, 8, 20, 220 if self.state == "scores" else 190))
-        surface.blit(shade, (0, 0))
+        surface.blit(self._shade(SCORES_DIM if self.state == "scores"
+                                 else OVERLAY_DIM), (0, 0))
 
         if self.state == "scores":
             self.draw_leaderboard(surface)
         elif self.state == "title":
             self.draw_title_attract(surface)
-            title = self.font_big.render("SPACE INVADERS", True, (255, 255, 255))
+            title = self.text(self.font_big, "SPACE INVADERS",
+                              (255, 255, 255))
             surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 170))
 
             rows = [
                 ("MOVE", "ARROWS  or  A / D"),
                 ("FIRE", "SPACE"),
                 ("PAUSE", "P"),
+                ("HELP", "H  controls / powerups"),
                 ("SCORES", "L  leaderboard"),
                 ("FULLSCREEN", "F11"),
                 ("CRT", "F3 filter   [ / ] intensity"),
@@ -993,17 +1114,118 @@ class RenderMixin:
             key_x = WIDTH // 2 - 190
             desc_x = WIDTH // 2 - 30
             for i, (key, desc) in enumerate(rows):
-                y = 274 + i * 28
-                surface.blit(self.font_small.render(key, True, (255, 220, 120)), (key_x, y))
-                surface.blit(self.font_small.render(desc, True, UI_COLOR), (desc_x, y))
+                y = 274 + i * 27
+                surface.blit(self.text(self.font_small, key,
+                                       (255, 220, 120)), (key_x, y))
+                surface.blit(self.text(self.font_small, desc, UI_COLOR),
+                             (desc_x, y))
 
             pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() / 350)
-            start_color = tuple(int(150 + 105 * pulse) for _ in range(3))
-            start = self.font_mid.render("PRESS ENTER TO START", True, start_color)
+            start_color = (int(150 + 105 * pulse),) * 3
+            start = self.text(self.font_mid, "PRESS ENTER TO START",
+                              start_color)
             # Below the painted cover title, above the floor line.
             surface.blit(start, (WIDTH // 2 - start.get_width() // 2, 524))
         elif self.state == "paused":
             self.draw_pause_screen(surface)
+        elif self.state == "help":
+            self.draw_help_screen(surface)
+
+    def _powerup_icon(self, kind: str) -> pygame.Surface:
+        """A large capsule illustration for the help card."""
+        icons = self._help_icons
+        icon = icons.get(kind)
+        if icon is None:
+            colour = POWERUP_COLORS.get(kind, (255, 255, 255))
+            icon = pygame.Surface((66, 66), pygame.SRCALPHA)
+            pygame.draw.rect(icon, (*colour, 52), icon.get_rect(),
+                             border_radius=18)
+            body = pygame.Rect(6, 6, 54, 54)
+            pygame.draw.rect(icon, colour, body, border_radius=12)
+            pygame.draw.rect(icon, (18, 20, 34), body, width=4,
+                             border_radius=12)
+            label = self.text(self.font_mid, POWERUP_LABELS[kind],
+                              (18, 20, 34))
+            icon.blit(label, (body.centerx - label.get_width() // 2,
+                              body.centery - label.get_height() // 2))
+            icons[kind] = icon
+        return icon
+
+    def draw_help_screen(self, surface: pygame.Surface) -> None:
+        """Every command plus a labelled illustration of each power-up."""
+        title = self.text(self.font_big, "HELP", (255, 240, 190))
+        surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 18))
+        subtitle = self.text(self.font_small, "CONTROLS & POWERUPS", UI_DIM)
+        surface.blit(subtitle, (WIDTH // 2 - subtitle.get_width() // 2, 82))
+
+        panel = pygame.Rect(36, 112, 728, 400)
+        pygame.draw.rect(surface, (10, 13, 30), panel, border_radius=10)
+        pygame.draw.rect(surface, (70, 80, 130), panel, width=1,
+                         border_radius=10)
+
+        header = (255, 220, 120)
+        left_head = self.text(self.font_tiny, "CONTROLS", header)
+        surface.blit(left_head, (60, 122))
+        right_head = self.text(self.font_tiny, "POWERUPS", header)
+        surface.blit(right_head, (436, 122))
+
+        rows = (
+            ("MOVE", "ARROWS  or  A / D"),
+            ("FIRE", "SPACE"),
+            ("DASH", "DOUBLE-TAP LEFT / RIGHT"),
+            ("PAUSE", "P"),
+            ("HELP", "H"),
+            ("SCORES", "L"),
+            ("SCROLL", "UP / DOWN  OR  WHEEL"),
+            ("PAGES", "PAGEUP/PAGEDOWN  HOME/END"),
+            ("ERASE", "DELETE ON SCORES (TWICE)"),
+            ("MUSIC", "M  MUTE / UNMUTE"),
+            ("VOLUME", "UP / DOWN  10% STEPS"),
+            ("NEXT SONG", "NUMPAD +"),
+            ("CRT FILTER", "F3   [ / ]  INTENSITY"),
+            ("FULLSCREEN", "F11  or  ALT+ENTER"),
+            ("STORY LINK", "CLICK ON GAME OVER"),
+            ("START", "ENTER"),
+            ("QUIT", "ESC  (OR LEAVE FULLSCREEN)"),
+        )
+        key_x, desc_x = 60, 166
+        for i, (key, desc) in enumerate(rows):
+            y = 146 + i * 19
+            surface.blit(self.text(self.font_tiny, key, header), (key_x, y))
+            surface.blit(self.text(self.font_tiny, desc, UI_COLOR),
+                         (desc_x, y))
+
+        powerup_notes = {
+            "rapid": ("FASTER FIRE",
+                      f"FOR {POWERUP_RAPID_TIME:.0f} SECONDS",
+                      "HOLD FIRE TO SPRAY"),
+            "triple": ("THREE-WAY SHOT",
+                       f"FOR {POWERUP_TRIPLE_TIME:.0f} SECONDS",
+                       "ONE PRESS, THREE BULLETS"),
+            "repair": ("REBUILDS BUNKERS", "INSTANTLY",
+                       "RESTORES EVERY BUNKER"),
+        }
+        icon_x, text_x = 438, 516
+        for i, kind in enumerate(POWERUP_KINDS):
+            y = 146 + i * 96
+            name, detail, extra = powerup_notes[kind]
+            surface.blit(self._powerup_icon(kind), (icon_x, y))
+            colour = POWERUP_COLORS.get(kind, (255, 255, 255))
+            surface.blit(self.text(self.font_small, name, colour),
+                         (text_x, y + 5))
+            surface.blit(self.text(self.font_tiny, detail, UI_DIM),
+                         (text_x, y + 29))
+            surface.blit(self.text(self.font_tiny, extra, UI_DIM),
+                         (text_x, y + 47))
+
+        note = self.text(
+            self.font_tiny,
+            "POWERUPS DROP FROM SOME DESTROYED INVADERS. "
+            "FLY INTO OR SHOOT A CAPSULE TO COLLECT IT.", UI_DIM)
+        surface.blit(note, (WIDTH // 2 - note.get_width() // 2, 480))
+
+        hint = self.text(self.font_small, "H  /  ESC   BACK", header)
+        surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 530))
 
     def draw_title_attract(self, surface: pygame.Surface) -> None:
         """A quiet marching fleet and the occasional saucer behind the title."""
@@ -1032,9 +1254,9 @@ class RenderMixin:
 
     def draw_pause_screen(self, surface: pygame.Surface) -> None:
         """Pause doubles as a run summary and a quiet controls reminder."""
-        title = self.font_big.render("PAUSED", True, UI_COLOR)
+        title = self.text(self.font_big, "PAUSED", UI_COLOR)
         surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 108))
-        resume = self.font_small.render("press P to resume", True, UI_DIM)
+        resume = self.text(self.font_small, "press P to resume", UI_DIM)
         surface.blit(resume, (WIDTH // 2 - resume.get_width() // 2, 174))
 
         panel = pygame.Rect(96, 210, 608, 272)
@@ -1042,14 +1264,16 @@ class RenderMixin:
         pygame.draw.rect(surface, (70, 80, 130), panel, width=1,
                          border_radius=10)
         stats = self.run_stats()
-        line = self.font_mid.render(
+        line = self.text(
+            self.font_mid,
             f"SCORE {self.score:05d}    WAVE {self.wave}    LIVES {self.lives}",
-            True, UI_COLOR)
+            UI_COLOR)
         surface.blit(line, (WIDTH // 2 - line.get_width() // 2, 230))
-        detail = self.font_small.render(
+        detail = self.text(
+            self.font_small,
             f"ACCURACY {stats['accuracy']:.1f}%    "
             f"BUNKERS SHOT {stats['bunker']:.1f}%    "
-            f"AVATARS {stats['avatars']}", True, UI_DIM)
+            f"AVATARS {stats['avatars']}", UI_DIM)
         surface.blit(detail, (WIDTH // 2 - detail.get_width() // 2, 272))
         pygame.draw.line(surface, (48, 56, 96), (128, 302), (672, 302), 1)
 
@@ -1058,7 +1282,7 @@ class RenderMixin:
             "PAUSE  P   SCORES  L   MUSIC  M   CRT  F3   FULLSCREEN  F11",
         )
         for i, text in enumerate(controls):
-            label = self.font_tiny.render(text, True, (255, 220, 120))
+            label = self.text(self.font_tiny, text, (255, 220, 120))
             surface.blit(label, (WIDTH // 2 - label.get_width() // 2,
                                  322 + i * 28))
 
@@ -1070,56 +1294,77 @@ class RenderMixin:
         else:
             music = (f"TRACK  {genre}    "
                      f"MUSIC {getattr(self, 'music_volume_percent', 0)}%")
-        track = self.font_small.render(music, True, (120, 200, 255))
+        track = self.text(self.font_small, music, (120, 200, 255))
         surface.blit(track, (WIDTH // 2 - track.get_width() // 2, 404))
 
-        hint = self.font_tiny.render(
-            "L  leaderboard      P  resume      ESC  leave fullscreen",
-            True, UI_DIM)
+        hint = self.text(
+            self.font_tiny,
+            "L  leaderboard      H  help      P  resume",
+            UI_DIM)
         surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 446))
 
     def draw_gameover_overlay(self, surface: pygame.Surface) -> None:
         """Fade the game-over card in over the death explosion."""
         fade = min(1.0, getattr(self, "game_over_time", 0.0) / GAMEOVER_FADE)
-        layer = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        layer.fill((6, 8, 20, 228))
-        header = pygame.Rect(34, 52, 732, 170)
-        pygame.draw.rect(layer, (10, 13, 30), header, border_radius=10)
-        pygame.draw.rect(layer, (46, 54, 92), header, width=1,
-                         border_radius=10)
-        self.draw_gameover_header(layer)
         story = getattr(self, "story", None)
-        self.story_link_rect = None
-        if story is not None:
-            self.draw_gameover_story(layer, story)
+        # Everything on this card is frozen once the run ends; only the fade
+        # alpha changes.  Repainting the full-screen layer every frame was
+        # pure waste, so keep it and swap it in with a new alpha.
+        signature = (
+            self.score, self.wave, self.last_rank, id(story),
+            self.avatars_killed, self.shots_fired, self.shots_hit,
+            self.bunker_cells_shot, self.bunker_cells_total,
+        )
+        layer = getattr(self, "_gameover_layer", None)
+        if layer is None or getattr(self, "_gameover_sig", None) != signature:
+            layer = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            layer.fill((6, 8, 20, 228))
+            header = pygame.Rect(34, 52, 732, 170)
+            pygame.draw.rect(layer, (10, 13, 30), header, border_radius=10)
+            pygame.draw.rect(layer, (46, 54, 92), header, width=1,
+                             border_radius=10)
+            self.draw_gameover_header(layer)
+            self.story_panel_rect = None
+            self.story_link_rect = None
+            if story is not None:
+                self.draw_gameover_story(layer, story)
+            else:
+                self.draw_gameover_fallback(layer)
+            hint = self.text(self.font_small,
+                             "press ENTER to play again", (255, 220, 120))
+            scores_hint = self.text(self.font_small,
+                                    "press L for high scores      H for help",
+                                    UI_DIM)
+            layer.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 522))
+            layer.blit(scores_hint,
+                       (WIDTH // 2 - scores_hint.get_width() // 2, 546))
+            self._gameover_layer = layer
+            self._gameover_sig = signature
+            self._gameover_panel = self.story_panel_rect
+            self._gameover_link = self.story_link_rect
         else:
-            self.draw_gameover_fallback(layer)
-        hint = self.font_small.render(
-            "press ENTER to play again", True, (255, 220, 120))
-        scores_hint = self.font_small.render(
-            "press L for high scores", True, UI_DIM)
-        layer.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 522))
-        layer.blit(scores_hint,
-                   (WIDTH // 2 - scores_hint.get_width() // 2, 546))
+            self.story_panel_rect = getattr(self, "_gameover_panel", None)
+            self.story_link_rect = getattr(self, "_gameover_link", None)
         layer.set_alpha(int(255 * fade))
         surface.blit(layer, (0, 0))
 
     def draw_gameover_header(self, surface: pygame.Surface) -> None:
         stats = self.run_stats()
-        title = self.font_big.render("GAME OVER", True, (255, 110, 130))
-        score = self.font_mid.render(
-            f"SCORE {self.score}   WAVE {self.wave}", True, UI_COLOR)
-        line = self.font_small.render(
+        title = self.text(self.font_big, "GAME OVER", (255, 110, 130))
+        score = self.text(
+            self.font_mid, f"SCORE {self.score}   WAVE {self.wave}", UI_COLOR)
+        line = self.text(
+            self.font_small,
             f"AVATARS KILLED {stats['avatars']}    "
             f"BUNKERS SHOT {stats['bunker']:.1f}%    "
-            f"ACCURACY {stats['accuracy']:.1f}%", True, UI_COLOR)
+            f"ACCURACY {stats['accuracy']:.1f}%", UI_COLOR)
         if self.last_rank is not None:
-            rank = self.font_mid.render(
-                f"NEW HIGH SCORE  #{self.last_rank}", True,
-                (255, 225, 120))
+            rank = self.text(self.font_mid,
+                             f"NEW HIGH SCORE  #{self.last_rank}",
+                             (255, 225, 120))
         else:
-            rank = self.font_small.render(
-                "DID NOT MAKE THE TOP 100", True, UI_DIM)
+            rank = self.text(self.font_small,
+                             "DID NOT MAKE THE TOP 100", UI_DIM)
         surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 68))
         surface.blit(score, (WIDTH // 2 - score.get_width() // 2, 128))
         surface.blit(line, (WIDTH // 2 - line.get_width() // 2, 160))
@@ -1131,9 +1376,9 @@ class RenderMixin:
         pygame.draw.rect(surface, (14, 18, 38), panel, border_radius=10)
         pygame.draw.rect(surface, (46, 54, 92), panel, width=1,
                          border_radius=10)
-        title = self.font_mid.render("NO TRANSMISSION", True, UI_DIM)
-        sub = self.font_small.render(
-            "The NASA story feed did not answer this run.", True, UI_DIM)
+        title = self.text(self.font_mid, "NO TRANSMISSION", UI_DIM)
+        sub = self.text(self.font_small,
+                        "The NASA story feed did not answer this run.", UI_DIM)
         surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 336))
         surface.blit(sub, (WIDTH // 2 - sub.get_width() // 2, 378))
 

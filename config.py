@@ -19,6 +19,8 @@ ALIEN_BULLET_COLOR = (255, 120, 140)
 UI_COLOR = (200, 210, 255)
 UI_DIM = (110, 115, 160)
 UI_RECORD = (255, 224, 140)   # the live BEST line under the top-left corner
+OVERLAY_DIM = 190             # dark wash behind title, pause and help cards
+SCORES_DIM = 220              # slightly heavier wash behind the leaderboard
 
 LEFT_WALL = 40
 RIGHT_WALL = WIDTH - 40

@@ -216,6 +216,23 @@ class Game(RenderMixin):
             if boom is not None:
                 self.sounds["record"] = boom
         self.canvas = pygame.Surface((WIDTH, HEIGHT))
+        # Rendering caches.  Labels, invader sprites, composed backdrops, and
+        # full-screen overlays are deterministic, so painting them once and
+        # reusing the surfaces is much cheaper than rebuilding every frame.
+        self._text_cache: dict[tuple, pygame.Surface] = {}
+        self._alien_sprites: dict[tuple, pygame.Surface] = {}
+        self._shade_cache: dict[int, pygame.Surface] = {}
+        self._powerup_sprites: dict[str, pygame.Surface] = {}
+        self._powerup_glows: dict[tuple[int, int, int], pygame.Surface] = {}
+        self._help_icons: dict[str, pygame.Surface] = {}
+        self._bullet_glow_surface: pygame.Surface | None = None
+        self._bg_gradient: pygame.Surface | None = None
+        self._bg_composites: dict[int, tuple[pygame.Surface, pygame.Surface]] = {}
+        self._gameover_layer: pygame.Surface | None = None
+        self._gameover_sig: tuple | None = None
+        self._gameover_panel: pygame.Rect | None = None
+        self._gameover_link: pygame.Rect | None = None
+        self._scaled: pygame.Surface | None = None
         self.avatar_tiles = load_avatar_tiles()
         self.leaderboard = leaderboard if leaderboard is not None else Leaderboard()
         self.score_return_state = "title"
@@ -230,11 +247,12 @@ class Game(RenderMixin):
         self._bg_fade = 1.0
         self.cover_prefetcher: CoverPrefetcher | None = None
         self.stars = [
-            (self.rng.uniform(0, WIDTH), self.rng.uniform(0, HEIGHT),
+            (int(self.rng.uniform(0, WIDTH)), int(self.rng.uniform(0, HEIGHT)),
              self.rng.choice((1, 1, 1, 2)), self.rng.uniform(6, 26))
             for _ in range(90)
         ]
-        self.state = "title"  # title | playing | paused | gameover
+        self.state = "title"  # title | playing | paused | gameover | scores | help
+        self.help_return_state = "title"
         self.reset()
 
     def reset(self) -> None:
@@ -298,6 +316,14 @@ class Game(RenderMixin):
         self.cover_prefetcher = CoverPrefetcher(self.rng.getrandbits(64))
         self.cover_pending = False
         self.pulp_bg = None
+        self._bg_prev = None
+        self._bg_fade = 1.0
+        self._bg_composites.clear()
+        # A new run always gets a fresh game-over card.
+        self._gameover_layer = None
+        self._gameover_sig = None
+        self._gameover_panel = None
+        self._gameover_link = None
         self.spawn_wave()
 
     def spawn_wave(self) -> None:
@@ -424,8 +450,8 @@ class Game(RenderMixin):
         return [a for a in self.aliens if a.alive and not a.diving]
 
     def formation_speed(self) -> float:
-        alive = self.alive_aliens()
-        frac = len(alive) / (COLS * ROWS)
+        alive = sum(1 for a in self.aliens if a.alive)
+        frac = alive / (COLS * ROWS)
         return (32 + 150 * (1.0 - frac)) * (1.0 + 0.16 * (self.wave - 1))
 
     def update(self, dt: float, move: int = 0, fire: bool = False) -> None:
@@ -556,7 +582,7 @@ class Game(RenderMixin):
 
     def update_divers(self, dt: float) -> None:
         """Fly any dive-bombers, or count down to the next one."""
-        divers = [a for a in self.alive_aliens() if a.diving]
+        divers = [a for a in self.aliens if a.alive and a.diving]
         if not divers:
             self.dive_timer -= dt
             if (self.dive_timer <= 0
@@ -953,20 +979,24 @@ class Game(RenderMixin):
         ]
 
         # Aliens are solid to the badge: it ricochets off the group it hit
-        # without harming them.
+        # without harming them.  Union the touched boxes without collecting
+        # them in a list first.
         rect = d.rect()
-        touched = [a for a in self.alive_aliens() if rect.colliderect(a.rect())]
-        if touched:
-            group = touched[0].rect()
-            for a in touched[1:]:
-                group = group.union(a.rect())
+        group = None
+        for a in self.aliens:
+            if a.alive:
+                box = a.rect()
+                if rect.colliderect(box):
+                    group = box if group is None else group.union(box)
+        if group is not None:
             self._bounce_drifter(d, group)
 
         # Bunkers take a bite and deflect the badge.
         rect = d.rect()
         for s in self.shields:
-            if s.bounds().colliderect(rect) and s.erase_rect(rect):
-                self._bounce_drifter(d, s.bounds())
+            bounds = s.bounds()
+            if bounds.colliderect(rect) and s.erase_rect(rect):
+                self._bounce_drifter(d, bounds)
                 rect = d.rect()
 
         # Hitting the player kills the player and the badge. Do this last:
@@ -1117,10 +1147,12 @@ class Game(RenderMixin):
                 self.hit_ufo()
                 continue
             hit = None
-            for a in sorted(self.alive_aliens(), key=lambda a: a.y):
-                if path.colliderect(a.rect()):
-                    hit = a
-                    break
+            # Prefer the topmost invader the shot touches, as the old sorted
+            # scan did, without building and sorting a list for every bullet.
+            for a in self.aliens:
+                if a.alive and path.colliderect(a.rect()):
+                    if hit is None or a.y < hit.y:
+                        hit = a
             if hit is None:
                 surviving.append(b)
             else:
@@ -1154,11 +1186,16 @@ class Game(RenderMixin):
                 remaining.append(b)
         self.alien_bullets = remaining
 
-        # Aliens marching down through a bunker chew a hole in it.
-        for a in self.alive_aliens():
+        # Aliens marching down through a bunker chew a hole in it.  The
+        # shields' bounds stay fixed for the whole pass, so build them once
+        # instead of recreating four Rects for every alien.
+        shield_bounds = [(s, s.bounds()) for s in self.shields]
+        for a in self.aliens:
+            if not a.alive:
+                continue
             area = a.rect()
-            for s in self.shields:
-                if s.bounds().colliderect(area):
+            for s, bounds in shield_bounds:
+                if bounds.colliderect(area):
                     s.erase_rect(area)
 
         self.maybe_celebrate_record()
@@ -1210,8 +1247,11 @@ class Game(RenderMixin):
                                 (140, 255, 190), 2])
 
     def lowest_alien_y(self) -> float:
-        alive = self.formation_aliens()
-        return max((a.y for a in alive), default=0.0)
+        lowest = 0.0
+        for a in self.aliens:
+            if a.alive and not a.diving and a.y > lowest:
+                lowest = a.y
+        return lowest
 
     def player_hit(self) -> None:
         # Blow up where the ship actually was before it respawns at centre.
@@ -1309,6 +1349,20 @@ class Game(RenderMixin):
         elif self.state == "paused":
             self.state = "playing"
 
+    def toggle_help(self) -> None:
+        """Show the controls/power-up card, or return to where it opened."""
+        if self.state == "help":
+            self.close_help()
+        elif self.state in ("title", "playing", "paused", "gameover",
+                            "scores"):
+            self.help_return_state = self.state
+            self.clear_armed = False
+            self.state = "help"
+
+    def close_help(self) -> None:
+        if self.state == "help":
+            self.state = self.help_return_state
+
     def show_scores(self) -> None:
         if self.state in ("title", "paused", "playing", "gameover"):
             self.score_return_state = self.state
@@ -1394,8 +1448,12 @@ class Game(RenderMixin):
             screen.blit(self._bezel((sw, sh)), (0, 0))
         else:
             screen.fill((0, 0, 0))
-        screen.blit(pygame.transform.smoothscale(self.canvas, (w, h)),
-                    (ox + dx, oy + dy))
+        # Reuse the scaled canvas between frames: smoothscale allocates and
+        # converts a full surface otherwise, every single frame.
+        if self._scaled is None or self._scaled.get_size() != (w, h):
+            self._scaled = pygame.Surface((w, h))
+        pygame.transform.smoothscale(self.canvas, (w, h), self._scaled)
+        screen.blit(self._scaled, (ox + dx, oy + dy))
 
     def update_effects(self, dt: float) -> None:
         if self.combo_time > 0:
