@@ -1192,7 +1192,7 @@ class RenderMixin:
             ("NEXT SONG", "NUMPAD +"),
             ("CRT FILTER", "F3   [ / ]  INTENSITY"),
             ("FULLSCREEN", "F11  or  ALT+ENTER"),
-            ("GAME OVER", "←/→ ARTICLES   CLICK STORY"),
+            ("NASA STORY", "←/→ PREV/NEXT  CLICK LINK"),
             ("START", "ENTER"),
             ("QUIT", "ESC  (OR LEAVE FULLSCREEN)"),
         )
@@ -1340,9 +1340,10 @@ class RenderMixin:
                 self.draw_gameover_fallback(layer)
             hint = self.text(self.font_small,
                              "press ENTER to play again", (255, 220, 120))
-            hint_line = "L  high scores      H  help"
+            hint_line = "L  scores      H  help"
             if story is not None:
-                hint_line += "      ← / →  articles"
+                hint_line = ("← / →  previous / next NASA story      "
+                             "L  scores      H  help")
             scores_hint = self.text(self.font_small, hint_line, UI_DIM)
             layer.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 522))
             layer.blit(scores_hint,
