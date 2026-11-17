@@ -37,6 +37,7 @@ from config import (
     RIGHT_WALL,
     ROW_COLORS,
     SHIELD_TOP_COLOR,
+    SHAKE_BANNER,
     SHAKE_DECAY,
     SHAKE_MAX,
     UFO_COLOR,
@@ -163,6 +164,9 @@ class RenderMixin:
             popup[4] -= dt
         self.popups = [p for p in self.popups if p[4] > 0]
         self.record_banner_time = max(0.0, self.record_banner_time - dt)
+        if self.record_banner_time > 0:
+            # Keep the view jolting for the whole marquee, not just the hit.
+            self.shake_energy = max(self.shake_energy, SHAKE_BANNER)
 
     def shake_offset(self) -> tuple[int, int]:
         """Current whole-canvas offset in pixels, or (0, 0) when settled."""

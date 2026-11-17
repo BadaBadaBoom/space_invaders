@@ -51,7 +51,8 @@ DASH_COOLDOWN = 1.2
 SHAKE_DRIFTER = 6.0          # you shot a floating avatar
 SHAKE_UFO = 8.0              # you brought down the mystery saucer
 SHAKE_LIFE_LOST = 9.0        # the ship was hit
-SHAKE_RECORD = 16.0          # half the fleet exploded: new high score
+SHAKE_RECORD = 16.0         # half the fleet exploded: new high score
+SHAKE_BANNER = 6.0           # held for as long as the record marquee rolls
 SHAKE_MAX = 20.0
 SHAKE_DECAY = 0.16
 

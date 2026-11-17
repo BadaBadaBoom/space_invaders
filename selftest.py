@@ -56,6 +56,7 @@ from config import (
     SHAKE_LIFE_LOST,
     SHAKE_MAX,
     SHAKE_RECORD,
+    SHAKE_BANNER,
     SHAKE_UFO,
     UFO_FIRST_DELAY,
     UFO_POINTS,
@@ -941,6 +942,18 @@ def check_record_celebration() -> None:
         frozen.update_feedback(RECORD_BANNER_TIME + 0.01)
         frozen.update(1 / 60, 1, False)
         assert frozen.player.x > start_x, "play did not resume after the marquee"
+
+        # The view keeps jolting for as long as the marquee rolls.
+        held = Game(seed=17)
+        held.start()
+        held.record_banner_time = RECORD_BANNER_TIME
+        for _ in range(120):
+            held.update_feedback(1 / 60)
+        assert held.shake_energy >= SHAKE_BANNER, "shake died under the marquee"
+        held.update_feedback(RECORD_BANNER_TIME)
+        held.update_feedback(1 / 60)
+        assert held.record_banner_time == 0.0
+        assert held.shake_energy == 0.0, "shake outlived the marquee"
 
         remaining = len(game.alive_aliens())
         game.maybe_celebrate_record()

@@ -448,8 +448,9 @@ follows you once you pass it. The moment a run beats the board's best, half the
 remaining aliens (rounded down, so the wave always keeps at least one) explode
 in their row colours and a 2.2-second synthesized blast plays. It happens once
 per run, and an empty board simply has no record to beat. A flashing marquee
-then scrolls `NEW HIGH SCORE 05381` across the arena for 3 seconds, and play
-is frozen while it rolls so the celebration can never get you killed.
+then scrolls `NEW HIGH SCORE 05381` across the arena for 3 seconds with the
+whole view shaking the entire time, and play is frozen while it rolls so the
+celebration can never get you killed.
 
 ## NASA story at game over
 
@@ -531,12 +532,13 @@ The leaderboard size is `LEADERBOARD_SIZE` (100) and its path is
 
 Screen shake is tuned in `config.py`: `SHAKE_DRIFTER`, `SHAKE_UFO`,
 `SHAKE_LIFE_LOST` and `SHAKE_RECORD` are the peak displacement in canvas
-pixels for each trigger,
-`SHAKE_MAX` caps stacked hits and `SHAKE_DECAY` is the fade time constant in
-seconds. The floating score numbers use `POPUP_LIFE` and `POPUP_RISE`, and the
-record marquee uses `RECORD_BANNER_TIME` and `RECORD_BANNER_SCROLL`. Set the
-three trigger strengths to 0 to turn shake off. Each wave's alien silhouette
-comes from `alien_look()` in `render.py`, keyed on the wave number.
+pixels for each trigger, `SHAKE_BANNER` is the level held while the record
+marquee rolls, `SHAKE_MAX` caps stacked hits and `SHAKE_DECAY` is the fade
+time constant in seconds. The floating score numbers use `POPUP_LIFE` and
+`POPUP_RISE`, and the record marquee uses `RECORD_BANNER_TIME` and
+`RECORD_BANNER_SCROLL`. Set the trigger strengths to 0 to turn shake off.
+Each wave's alien silhouette comes from `alien_look()` in `render.py`, keyed
+on the wave number.
 
 For the music, see the top of `music.py`: `RIFF_RHYTHMS` defines the rhythm
 templates, `Composer._make_sections` and each genre's `sections` define the song
