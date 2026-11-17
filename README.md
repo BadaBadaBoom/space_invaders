@@ -123,9 +123,11 @@ and painted backdrops, but no soundtrack.
 | `Esc` | Leave fullscreen, or quit |
 
 `I` is a testing aid rather than a gameplay feature. While it is on, enemy
-fire, dive-bombers, avatar badges and the landing line cannot end the run. The
-HUD shows `INVINCIBLE`, and the setting survives run restarts until you press
-`I` again. Toggle it off when you want the run to be lethal again.
+fire passes through the ship, dive-bombers and avatar badges shatter
+harmlessly, and the landing line cannot end the run. A pulsing red outline
+surrounds the ship, the HUD shows `INVINCIBLE`, and the setting survives run
+restarts until you press `I` again. Toggle it off when you want the run to be
+lethal again.
 
 The dash ignores held movement for its 0.14 s burst, so it works as an
 escape even while you are pressing the other way, and the burst is
@@ -598,9 +600,9 @@ window, burst over held input, wall clamp, cooldown, invulnerability and
 dash-through kills), the flow beats (wave cards freeze and release the sim, the
 `+100` bonus lands after the card, the death burst and red vignette fire, the
 game-over card fades in, and the pause summary paints), the invincibility test
-toggle (survives bullets, badge collisions and the landing line, persists
-across restarts, and becomes lethal again when switched off), the help card
-(opens
+toggle (enemy bullets pass through, badge collisions and the landing line
+cannot kill, the red outline paints, it persists across restarts, and becomes
+lethal again when switched off), the help card (opens
 from the title, play, pause, game over and leaderboard, freezes the fight
 while open, returns to the same screen, and has a cached illustration for
 every power-up), the render caches (label, sprite and backdrop reuse, bounded

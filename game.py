@@ -1262,7 +1262,8 @@ class Game(RenderMixin):
             path = b.sweep_rect()
             if self.damage_shield(path, b.vy, by_player=False):
                 continue
-            if (self.player.invulnerable <= 0
+            if (not self.invincible
+                    and self.player.invulnerable <= 0
                     and self.player.dash_time <= 0
                     and path.colliderect(player_rect)):
                 self.play("boom")

@@ -807,7 +807,9 @@ class RenderMixin:
         x, y = int(p.x), int(p.y)
         if p.dash_time > 0:
             self.draw_dash_shield(surface, x, y)
-        if p.invulnerable > 0 and int(p.invulnerable * 12) % 2 == 0:
+        if (not getattr(self, "invincible", False)
+                and p.invulnerable > 0
+                and int(p.invulnerable * 12) % 2 == 0):
             return
         lean = p.move_dir * (4 if p.dash_time > 0 else 3)
         recoil = 1 if p.muzzle > MUZZLE_FLASH_TIME * 0.5 else 0
@@ -819,6 +821,21 @@ class RenderMixin:
         self.draw_ship(surface, x, y + recoil, PLAYER_COLOR, lean)
         if p.muzzle > 0:
             self.draw_muzzle_flash(surface, x, y + recoil, lean)
+        if getattr(self, "invincible", False):
+            self.draw_invincible_glow(surface, x, y + recoil)
+
+    def draw_invincible_glow(self, surface: pygame.Surface, x: int,
+                             y: int) -> None:
+        """A pulsing red outline around the test-mode ship."""
+        pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() / 170.0)
+        box = pygame.Rect(x - 5, y - 5, PLAYER_W + 10, PLAYER_H + 10)
+        pygame.draw.rect(surface, (90, 8, 24), box.inflate(4, 4), width=1,
+                         border_radius=9)
+        pygame.draw.rect(surface, (190, 20, 50), box, width=2,
+                         border_radius=8)
+        inner = (255, int(70 + 110 * pulse), int(100 + 90 * pulse))
+        pygame.draw.rect(surface, inner, box.inflate(-2, -2), width=1,
+                         border_radius=7)
 
     def draw_debris(self, surface: pygame.Surface) -> None:
         for flash in self.flashes:

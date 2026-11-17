@@ -50,6 +50,7 @@ from config import (
     MUZZLE_FLASH_TIME,
     PLAYER_BULLET_SPEED,
     PLAYER_FIRE_COOLDOWN,
+    PLAYER_H,
     PLAYER_W,
     POWERUP_COLORS,
     POWERUP_KINDS,
@@ -285,8 +286,18 @@ def check_invincible() -> None:
         game.alien_bullets = [Bullet(game.player.center_x, game.player.y,
                                      ALIEN_BULLET_SPEED, False)]
         game.check_collisions()
-        assert game.lives == lives and not game.alien_bullets
+        assert game.lives == lives
+        assert len(game.alien_bullets) == 1, (
+            "invincible ship swallowed an enemy bullet")
         game.draw(game.canvas)
+        probe = pygame.Surface((WIDTH, HEIGHT))
+        probe.fill((0, 0, 0))
+        game.draw_player(probe)
+        px = int(game.player.x)
+        py = int(game.player.y)
+        glow = probe.get_at((px - 4, py + PLAYER_H // 2))
+        assert glow.r > 150 and glow.r > glow.g + 40, (
+            "invincible ship has no red outline")
 
         # The landing line cannot end a test run either.
         for alien in game.aliens:
