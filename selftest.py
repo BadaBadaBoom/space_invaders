@@ -362,17 +362,6 @@ def check_render_caches() -> None:
     assert game.alien_sprite(ROW_COLORS[1], 1, look) is not sprite
     assert sprite.get_size() == (ALIEN_W, ALIEN_H + 3)
 
-    # The BEST/SCORE plate exposes its clean-CRT region while the HUD is up,
-    # and clears it on screens without that HUD.
-    game.draw(game.canvas)
-    hud = game.hud_plate_rect
-    assert hud is not None, "playing frame did not report its HUD plate"
-    assert hud.topleft == (LEFT_WALL - 8, 0) and hud.height == 44
-    game.state = "title"
-    game.draw(game.canvas)
-    assert game.hud_plate_rect is None, "title frame kept a stale HUD plate"
-    game.state = "playing"
-
     # A cover is composited with the gradient once; the fading cover gets its
     # own cached composite, and the cache never keeps more than two covers.
     old_cover = pygame.Surface((WIDTH, HEIGHT))
@@ -1900,6 +1889,22 @@ def check_crt() -> None:
     assert frame("medium", passes=2) == frame("medium", passes=2)
     assert frame("high", passes=2) == frame("high", passes=2)
     assert frame("high", passes=2) != frame("medium", passes=2)
+
+    # Region patches get the cheaper tint/band/bloom pass used by the HUD cap.
+    patch = pygame.Surface((160, 20))
+    patch.fill((40, 70, 110))
+    before = pygame.image.tobytes(patch, "RGB")
+    CrtOverlay((160, 120), preset="medium", seed=5).apply_patch(
+        patch, (0, 0), t=1.25)
+    assert pygame.image.tobytes(patch, "RGB") != before, (
+        "apply_patch was a no-op for medium")
+    untouched = pygame.Surface((160, 20))
+    untouched.fill((40, 70, 110))
+    before = pygame.image.tobytes(untouched, "RGB")
+    CrtOverlay((160, 120), preset="off", seed=5).apply_patch(
+        untouched, (0, 0), t=1.25)
+    assert pygame.image.tobytes(untouched, "RGB") == before, (
+        "apply_patch changed a surface with the filter off")
 
 
 def check_backgrounds(leaderboard: Leaderboard | None = None) -> None:

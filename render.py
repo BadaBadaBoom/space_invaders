@@ -353,7 +353,6 @@ class RenderMixin:
                                 top + 68))
 
     def draw(self, surface: pygame.Surface) -> None:
-        self.hud_plate_rect = None
         self.draw_background(surface)
         self.draw_walls(surface)
         if self.state not in ("title", "scores"):
@@ -875,8 +874,6 @@ class RenderMixin:
             self._hud_plate = plate
             self._hud_plate_w = plate_w
         surface.blit(self._hud_plate, (LEFT_WALL - 8, 0))
-        # The CRT pass keeps this plate crisp; main restores a pre-CRT copy.
-        self.hud_plate_rect = pygame.Rect(LEFT_WALL - 8, 0, plate_w, 44)
 
         # A 1px shadow on top of the plate keeps the glyph edges crisp.
         best_shadow = self.text(self.font_small, f"BEST {best:05d}",
@@ -895,7 +892,7 @@ class RenderMixin:
             surface.blit(label, (WIDTH // 2 - label.get_width() // 2, 44))
         if getattr(self, "invincible", False):
             label = self.text(self.font_tiny, "INVINCIBLE", (255, 120, 140))
-            surface.blit(label, (RIGHT_WALL - label.get_width(), 62))
+            surface.blit(label, (RIGHT_WALL - label.get_width(), 4))
 
         # Fleet progress: the whole formation as a dot map, dimmed where the
         # ranks have been thinned out.  8x4 cells of 4px with a 1px gutter fit

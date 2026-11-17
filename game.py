@@ -236,7 +236,6 @@ class Game(RenderMixin):
         self._gameover_sig: tuple | None = None
         self._gameover_panel: pygame.Rect | None = None
         self._gameover_link: pygame.Rect | None = None
-        self.hud_plate_rect: pygame.Rect | None = None
         self._scaled: pygame.Surface | None = None
         self.avatar_tiles = load_avatar_tiles()
         self.leaderboard = leaderboard if leaderboard is not None else Leaderboard()

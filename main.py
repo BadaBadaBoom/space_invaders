@@ -51,6 +51,7 @@ from config import (
     CRT_INTENSITY,
     FPS,
     HEIGHT,
+    HUD_CRT_HEIGHT,
     LEADERBOARD_ROWS,
     LEADERBOARD_SIZE,
     MUSIC_DUCK_GAMEOVER,
@@ -141,6 +142,12 @@ def main() -> int:
     game = Game()
     crt = CrtOverlay((WIDTH, HEIGHT), preset=CRT_DEFAULT,
                      intensity=CRT_INTENSITY)
+    # The top HUD strip is capped at medium even when high is selected, so
+    # small labels and timers stay readable.
+    hud_rect = pygame.Rect(0, 0, WIDTH, HUD_CRT_HEIGHT)
+    hud_crt = CrtOverlay((WIDTH, HEIGHT), preset="medium",
+                         intensity=CRT_INTENSITY)
+    hud_patch = pygame.Surface((WIDTH, HUD_CRT_HEIGHT))
     news_feed = NewsFeed()
     music_player = MusicPlayer(enabled=not args.no_music,
                               volume=args.music_volume)
@@ -253,6 +260,7 @@ def main() -> int:
                             if event.key == pygame.K_RIGHTBRACKET
                             else -CRT_INTENSITY_STEP)
                     crt.set_intensity(crt.intensity + step)
+                    hud_crt.set_intensity(crt.intensity)
                     level = round(crt.intensity * 100)
                     crt_hint = (f"CRT {crt.preset.upper()} {level}%",
                                 pygame.time.get_ticks() + 1400)
@@ -363,18 +371,26 @@ def main() -> int:
             label = game.font_small.render(hint, True, UI_DIM)
             game.canvas.blit(label, (RIGHT_WALL - label.get_width(),
                                      HEIGHT - 19))
-        # Keep the NASA story card and the top-left BEST/SCORE plate crisp:
-        # copy them before the CRT pass and put them back afterwards.
-        clean_panels = []
+        # The NASA story card stays fully crisp. The top HUD strip, which
+        # includes BEST/SCORE, the fleet map, chain and cooldown timers, is
+        # capped at medium even when the high preset is selected.
+        clean_panel = None
         if crt.preset != "off" and crt.intensity > 0:
-            for rect in (getattr(game, "story_panel_rect", None),
-                         getattr(game, "hud_plate_rect", None)):
-                if rect is not None:
-                    clean_panels.append(
-                        (rect, game.canvas.subsurface(rect).copy()))
-        crt.apply_inplace(game.canvas, t=pygame.time.get_ticks() / 1000)
-        for rect, panel in clean_panels:
-            game.canvas.blit(panel, rect.topleft)
+            panel = getattr(game, "story_panel_rect", None)
+            if panel is not None:
+                clean_panel = (panel, game.canvas.subsurface(panel).copy())
+        capping_hud = (crt.preset == "high" and crt.intensity > 0
+                       and game.state == "playing")
+        seconds = pygame.time.get_ticks() / 1000
+        if capping_hud:
+            hud_patch.blit(game.canvas, (0, 0), hud_rect)
+            hud_crt.apply_patch(hud_patch, hud_rect.topleft, seconds)
+        crt.apply_inplace(game.canvas, t=seconds)
+        if clean_panel is not None:
+            panel, pixels = clean_panel
+            game.canvas.blit(pixels, panel.topleft)
+        if capping_hud:
+            game.canvas.blit(hud_patch, hud_rect.topleft)
         game.present(screen)
         pygame.display.flip()
 

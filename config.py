@@ -10,6 +10,7 @@ FPS = 60
 FIELD_TOP = 64
 CRT_DEFAULT = "medium"       # "off" | "low" | "medium" | "high"
 CRT_INTENSITY = 1.0          # 0.0 = off, 1.0 = full preset strength
+HUD_CRT_HEIGHT = 64          # top HUD strip is capped at medium while playing
 
 BG_TOP = (8, 10, 26)
 BG_BOTTOM = (18, 12, 34)

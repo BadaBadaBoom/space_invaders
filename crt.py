@@ -254,3 +254,34 @@ class CrtOverlay:
             if self._prev is None:
                 self._prev = pygame.Surface(self.size)
             self._prev.blit(snapshot, (0, 0))
+
+    def apply_patch(self, patch: pygame.Surface,
+                    offset: tuple[int, int], t: float = 0.0) -> None:
+        """Apply this overlay's tint/band/bloom to a patch in place.
+
+        *offset* maps the patch back onto the full canvas so scanlines,
+        grille, vignette and the rolling band keep their normal coordinates.
+        This is the cheap region pass used to cap the HUD at medium; it does
+        not implement grain or phosphor trails.
+        """
+        if not any(self.cfg.values()):
+            return
+        w, h = patch.get_size()
+        ox, oy = offset
+        if self._tint is not None:
+            patch.blit(self._tint, (0, 0), (ox, oy, w, h),
+                       special_flags=pygame.BLEND_RGB_MULT)
+        if self._band is not None:
+            bh = self._band.get_height()
+            y = int((t * 260.0) % (self.size[1] + bh)) - bh
+            top, bottom = max(oy, y), min(oy + h, y + bh)
+            if bottom > top:
+                patch.blit(self._band, (0, top - oy),
+                           (0, top - y, w, bottom - top),
+                           special_flags=pygame.BLEND_ADD)
+        if self.cfg["bloom"]:
+            small = pygame.transform.smoothscale(
+                patch, (max(1, w // 6), max(1, h // 6)))
+            halo = pygame.transform.smoothscale(small, (w, h))
+            halo.set_alpha(int(self.cfg["bloom"]))
+            patch.blit(halo, (0, 0), special_flags=pygame.BLEND_ADD)

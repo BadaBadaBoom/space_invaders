@@ -423,9 +423,11 @@ a brief on-screen hint. `[` and `]` scale the active preset's strength from 0%
 to 100% in 10% steps. The defaults are `CRT_DEFAULT = "medium"` and
 `CRT_INTENSITY = 1.0` in `config.py`; the runtime choice is not persisted. The
 pass runs on the 800×600 canvas, so its cost stays fixed regardless of window
-size, and `off` or 0% intensity skips it entirely. The top-left `BEST` /
-`SCORE` plate is kept crisp by restoring its pre-CRT pixels after the pass,
-while the rest of the playfield gets the full filter.
+size, and `off` or 0% intensity skips it entirely. During active play, the top
+HUD strip (`HUD_CRT_HEIGHT`, 64 px) — BEST/SCORE, the fleet map, chain, dash
+and boost timers, wave and lives — is capped at the **medium** preset, so
+selecting `high` only intensifies the playfield below it. The NASA story card
+is kept fully crisp.
 
 ## Rendering caches
 
@@ -628,9 +630,10 @@ the card holds the fight), `GAMEOVER_FADE` (game-over layer fade-in),
 `COVER_FADE_TIME` (backdrop crossfade).
 
 The CRT defaults are in `config.py`: `CRT_DEFAULT` (`"off"`, `"low"`,
-`"medium"` or `"high"`) and `CRT_INTENSITY` (0.0–1.0). The dark wash behind the
-title, pause and help cards is `OVERLAY_DIM`; the leaderboard uses the heavier
-`SCORES_DIM`.
+`"medium"` or `"high"`), `CRT_INTENSITY` (0.0–1.0) and `HUD_CRT_HEIGHT`
+(height of the top strip whose effect is capped at medium). The dark wash
+behind the title, pause and help cards is `OVERLAY_DIM`; the leaderboard uses
+the heavier `SCORES_DIM`.
 
 The hazards are tuned by `DRIFTER_SIZE`, `DRIFTER_SPEED_MIN`/`MAX`,
 `DRIFTER_SPAWN_DELAY`, `DRIFTER_RESPAWN`, `DRIFTER_LIFE`,
