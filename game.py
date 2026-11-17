@@ -22,12 +22,15 @@ from config import (
     ALIEN_W,
     BOSS_EVERY,
     BOSS_COLOR,
+    BOSS_ENTRY_TIME,
     BOSS_FIRE_MAX,
     BOSS_FIRE_MIN,
     BOSS_H,
     BOSS_HP_BASE,
     BOSS_HP_STEP,
     BOSS_LIGHT,
+    BOSS_RAGE_FIRE_SCALE,
+    BOSS_RAGE_SWAY_SCALE,
     BOSS_SCORE_BASE,
     BOSS_SCORE_STEP,
     BOSS_SWAY,
@@ -36,6 +39,7 @@ from config import (
     BOSS_W,
     BOSS_Y,
     COLS,
+    COMBO_WINDOW,
     DASH_COOLDOWN,
     DASH_SPEED,
     DASH_TAP_WINDOW,
@@ -61,11 +65,14 @@ from config import (
     GAP_X,
     GAP_Y,
     HEIGHT,
+    HURT_FLASH_TIME,
     LANDING_Y,
     LEADERBOARD_ROWS,
     LEFT_WALL,
     MAX_PLAYER_BULLETS,
+    MUZZLE_FLASH_TIME,
     PLAYER_BULLET_SPEED,
+    PLAYER_COLOR,
     PLAYER_FIRE_COOLDOWN,
     PLAYER_H,
     PLAYER_SPEED,
@@ -84,6 +91,7 @@ from config import (
     ROW_POINTS,
     ROWS,
     RECORD_BANNER_TIME,
+    SHAKE_BOSS_RAGE,
     SHAKE_DRIFTER,
     SHAKE_LIFE_LOST,
     SHAKE_RECORD,
@@ -101,6 +109,8 @@ from config import (
     UFO_SPEED_MIN,
     UFO_W,
     UFO_Y,
+    WAVE_INTRO_BOSS_TIME,
+    WAVE_INTRO_TIME,
     WIDTH,
     clamp,
 )
@@ -187,7 +197,12 @@ class Game(RenderMixin):
             "dash": make_tone(520, 55, 0.10),
             "dive": make_tone(1150, 90, 0.12),
             "wail": make_wail(1900, 620, 420, 0.24),
+            "rage": make_wail(360, 110, 520, 0.26),
         }
+        # Kill-chain chirps climb a little with every link in the chain.
+        for tier in range(2, 9):
+            self.sounds[f"combo{tier}"] = make_tone(
+                440 + tier * 70, 42, 0.09)
         # Pre-render the beat-the-record boom once per Game instance, never
         # on the victory frame. Without numpy (metal is None), without the
         # synth hook, or without an initialised mixer we simply go without.
@@ -211,6 +226,8 @@ class Game(RenderMixin):
         self.genre_bag: list[str] = []
         self.music_genre: str | None = None
         self.pulp_bg: pygame.Surface | None = None
+        self._bg_prev: pygame.Surface | None = None
+        self._bg_fade = 1.0
         self.cover_prefetcher: CoverPrefetcher | None = None
         self.stars = [
             (self.rng.uniform(0, WIDTH), self.rng.uniform(0, HEIGHT),
@@ -244,6 +261,22 @@ class Game(RenderMixin):
         self.popups: list[list] = []
         self.record_banner_time = 0.0
         self.record_banner_score = 0
+        self.combo = 0
+        self.combo_time = 0.0
+        # Short flow beats: a wave card between rounds, a red hit vignette,
+        # and the fade-in of the game-over screen.
+        self.wave_intro_time = 0.0
+        self.wave_intro_total = 0.0
+        self.wave_intro_title = ""
+        self.wave_intro_subtitle = ""
+        self.wave_intro_boss = False
+        self.wave_intro_bonus = 0
+        self.hurt_flash = 0.0
+        self.game_over_time = 0.0
+        # Music state mirrored from main for the pause screen.
+        self.music_enabled = True
+        self.music_muted = False
+        self.music_volume_percent = 0
         # The mystery saucer, if one is crossing, and the countdown to the next.
         self.ufo: Ufo | None = None
         self.ufo_timer = self.rng.uniform(*UFO_FIRST_DELAY)
@@ -274,7 +307,16 @@ class Game(RenderMixin):
         self.boss_flash = 0.0
         self.boss_volley = BOSS_FIRE_MAX
         self.boss_volley_index = 0
+        self.boss_entry = 0.0
+        self.boss_raged = False
+        self.boss_ghost_hp = 0
         self.victory_timer = 0.0
+        # Direct spawns (tests, resets) start hot; start()/next_wave() add the
+        # intro card afterwards.
+        self.wave_intro_time = 0.0
+        self.wave_intro_bonus = 0
+        self.combo = 0
+        self.combo_time = 0.0
         if self.wave % BOSS_EVERY == 0:
             self.spawn_boss()
         else:
@@ -312,7 +354,7 @@ class Game(RenderMixin):
             block = (self.wave == 1)
             new_bg = self.cover_prefetcher.take(block=block, timeout=2.0)
             if new_bg is not None:
-                self.pulp_bg = new_bg
+                self.adopt_cover(new_bg)
                 self.cover_pending = False
             else:
                 self.cover_pending = True
@@ -323,11 +365,14 @@ class Game(RenderMixin):
         hp = BOSS_HP_BASE + BOSS_HP_STEP * (tier - 1)
         self.boss = Boss(
             x=(WIDTH - BOSS_W) / 2,
-            y=BOSS_Y,
+            y=-BOSS_H,
             hp=hp,
             max_hp=hp,
             points=BOSS_SCORE_BASE + BOSS_SCORE_STEP * (tier - 1),
         )
+        self.boss_entry = BOSS_ENTRY_TIME
+        self.boss_raged = False
+        self.boss_ghost_hp = hp
         self.fire_timer = BOSS_FIRE_MAX
 
     def choose_music_genre(self) -> str | None:
@@ -354,6 +399,23 @@ class Game(RenderMixin):
     def start(self) -> None:
         self.reset()
         self.state = "playing"
+        self.begin_wave_intro(cleared=False)
+
+    def begin_wave_intro(self, cleared: bool = False) -> None:
+        """Put a short card in front of the new wave and freeze the fight."""
+        boss = self.wave % BOSS_EVERY == 0
+        self.wave_intro_total = (WAVE_INTRO_BOSS_TIME if boss
+                                 else WAVE_INTRO_TIME)
+        self.wave_intro_time = self.wave_intro_total
+        self.wave_intro_title = f"WAVE {self.wave}"
+        self.wave_intro_boss = boss
+        if boss:
+            self.wave_intro_subtitle = "CAPITAL SHIP INBOUND"
+        elif cleared:
+            self.wave_intro_subtitle = "WAVE CLEAR   +100"
+        else:
+            self.wave_intro_subtitle = "DEFEND THE LINE"
+        self.wave_intro_bonus = 100 if cleared else 0
 
     def alive_aliens(self) -> list[Alien]:
         return [a for a in self.aliens if a.alive]
@@ -373,6 +435,9 @@ class Game(RenderMixin):
         if self.record_banner_time > 0:
             # Hold the fight while the record marquee rolls, so the
             # celebration can never get the player killed.
+            return
+        if self.wave_intro_time > 0:
+            # The wave card is the player's breather between fights.
             return
         dt = min(dt, 1 / 30)  # keep physics sane after a window stall
 
@@ -407,15 +472,20 @@ class Game(RenderMixin):
         p.rapid = max(0.0, p.rapid - dt)
         p.triple = max(0.0, p.triple - dt)
         p.dash_cooldown = max(0.0, p.dash_cooldown - dt)
+        p.muzzle = max(0.0, p.muzzle - dt)
 
         if p.dash_time > 0:
             # The burst overrides held movement for its short duration.
             p.dash_time = max(0.0, p.dash_time - dt)
             p.x = clamp(p.x + p.dash_dir * DASH_SPEED * dt, LEFT_WALL,
                         RIGHT_WALL - PLAYER_W)
+            p.move_dir = p.dash_dir
         elif move:
             p.x = clamp(p.x + move * PLAYER_SPEED * dt, LEFT_WALL,
                         RIGHT_WALL - PLAYER_W)
+            p.move_dir = move
+        else:
+            p.move_dir = 0
 
         limit = MAX_PLAYER_BULLETS * (3 if p.triple > 0 else 1)
         if fire and p.cooldown <= 0 and len(self.player_bullets) < limit:
@@ -428,6 +498,7 @@ class Game(RenderMixin):
                     vy=-PLAYER_BULLET_SPEED, from_player=True,
                 ))
             self.shots_fired += len(spread)
+            p.muzzle = MUZZLE_FLASH_TIME
             self.play("shoot")
 
     def dash(self, direction: int) -> bool:
@@ -548,15 +619,32 @@ class Game(RenderMixin):
         boss = self.boss
         if boss is None:
             return
+        if self.boss_ghost_hp > boss.hp:
+            self.boss_ghost_hp = max(
+                boss.hp, self.boss_ghost_hp - boss.max_hp * 0.8 * dt)
         self.boss_phase += dt
-        sway = math.sin(self.boss_phase * BOSS_SWAY_SPEED) * BOSS_SWAY
+        sway_speed = BOSS_SWAY_SPEED * (
+            BOSS_RAGE_SWAY_SCALE if self.boss_raged else 1.0)
+        sway = math.sin(self.boss_phase * sway_speed) * BOSS_SWAY
         boss.x = clamp((WIDTH - BOSS_W) / 2 + sway,
                        LEFT_WALL + 6, RIGHT_WALL - BOSS_W - 6)
         self.boss_flash = max(0.0, self.boss_flash - dt)
+        if self.boss_entry > 0:
+            # Slide down from above the arena before the fight begins.
+            self.boss_entry = max(0.0, self.boss_entry - dt)
+            progress = 1.0 - self.boss_entry / BOSS_ENTRY_TIME
+            ease = 1.0 - (1.0 - progress) ** 3
+            boss.y = -BOSS_H + (BOSS_Y + BOSS_H) * ease
+            if self.boss_entry == 0:
+                boss.y = BOSS_Y
+            return
         self.boss_volley -= dt
         if self.boss_volley <= 0:
             self.fire_boss_volley()
-            self.boss_volley = self.rng.uniform(BOSS_FIRE_MIN, BOSS_FIRE_MAX)
+            interval = self.rng.uniform(BOSS_FIRE_MIN, BOSS_FIRE_MAX)
+            if self.boss_raged:
+                interval *= BOSS_RAGE_FIRE_SCALE
+            self.boss_volley = interval
 
     def fire_boss_volley(self) -> None:
         """Cycle a hull-wide fan, an aimed triple, and a scattered rain."""
@@ -608,8 +696,27 @@ class Game(RenderMixin):
             boss.x + BOSS_W / 2
             + self.rng.uniform(-BOSS_W * 0.35, BOSS_W * 0.35),
             boss.y + BOSS_H * 0.7)
+        if (not self.boss_raged
+                and boss.hp * 2 <= boss.max_hp):
+            self.trigger_boss_rage()
         if boss.hp <= 0:
             self.kill_boss()
+
+    def trigger_boss_rage(self) -> None:
+        """Crossing half health opens the boss's overdrive phase."""
+        boss = self.boss
+        if boss is None or self.boss_raged:
+            return
+        self.boss_raged = True
+        self.add_shake(SHAKE_BOSS_RAGE)
+        self.play("rage")
+        cx, cy = boss.x + BOSS_W / 2, boss.y + BOSS_H / 2
+        self.rings.append([cx, cy, 18.0, 0.5, (255, 110, 140)])
+        self.flashes.append([cx, cy, 0.28, 0.28, (255, 190, 210), 42.0])
+        for offset in (-BOSS_W * 0.32, 0.0, BOSS_W * 0.32):
+            self.spawn_sparks(cx + offset, boss.y + BOSS_H * 0.6)
+        self.spawn_popup(cx, boss.y - 20, "OVERDRIVE", (255, 120, 150))
+        self.boss_volley = 0.25
 
     def kill_boss(self) -> None:
         boss = self.boss
@@ -750,8 +857,9 @@ class Game(RenderMixin):
         self.shots_hit += 1
         self.score += ufo.points
         self.add_shake(SHAKE_UFO)
-        self.spawn_popup(ufo.x + UFO_W / 2, ufo.y, f"+{ufo.points}",
-                         UFO_LIGHT)
+        combo = self.register_kill()
+        label = f"+{ufo.points}" + (f"  ×{combo}" if combo > 1 else "")
+        self.spawn_popup(ufo.x + UFO_W / 2, ufo.y, label, UFO_LIGHT)
         self.explode(ufo.x + UFO_W / 2, ufo.y + UFO_H / 2,
                      [UFO_COLOR, UFO_LIGHT, (255, 255, 255)], sound="wail")
         self.maybe_celebrate_record()
@@ -830,7 +938,9 @@ class Game(RenderMixin):
                 killed = True
                 self.shots_hit += 1
                 self.score += d.value
-                self.spawn_popup(d.x + d.size / 2, d.y, f"+{d.value}",
+                combo = self.register_kill()
+                label = f"+{d.value}" + (f"  ×{combo}" if combo > 1 else "")
+                self.spawn_popup(d.x + d.size / 2, d.y, label,
                                  (d.palette or [(255, 255, 255)])[0])
             else:
                 keep.append(b)
@@ -999,7 +1109,8 @@ class Game(RenderMixin):
                                  if p is not shot_powerup]
                 self.apply_powerup(shot_powerup)
                 continue
-            if self.boss is not None and path.colliderect(self.boss.rect()):
+            if (self.boss is not None and self.boss_entry <= 0
+                    and path.colliderect(self.boss.rect())):
                 self.damage_boss()
                 continue
             if self.ufo is not None and path.colliderect(self.ufo.rect()):
@@ -1019,8 +1130,10 @@ class Game(RenderMixin):
                 self.score += points
                 self.play("hit")
                 self.spawn_debris(hit)
+                combo = self.register_kill()
+                label = f"+{points}" + (f"  ×{combo}" if combo > 1 else "")
                 self.spawn_popup(hit.x + ALIEN_W / 2, hit.y,
-                                 f"+{points}",
+                                 label,
                                  ROW_COLORS[hit.row % len(ROW_COLORS)])
                 self.maybe_drop_powerup(hit.x + ALIEN_W / 2, hit.y)
         self.player_bullets = surviving
@@ -1074,6 +1187,14 @@ class Game(RenderMixin):
                                 math.sin(angle) * speed, life, life,
                                 (255, 230, 160), 3])
 
+    def register_kill(self) -> int:
+        """Extend the kill chain and return its new length."""
+        self.combo = (self.combo + 1 if self.combo_time > 0 else 1)
+        self.combo_time = COMBO_WINDOW
+        if self.combo >= 2:
+            self.play(f"combo{min(8, self.combo)}")
+        return self.combo
+
     def spawn_popup(self, x: float, y: float, text: str,
                     colour: tuple[int, int, int]) -> None:
         """A rising score number that fades out where points were earned."""
@@ -1093,6 +1214,10 @@ class Game(RenderMixin):
         return max((a.y for a in alive), default=0.0)
 
     def player_hit(self) -> None:
+        # Blow up where the ship actually was before it respawns at centre.
+        self.spawn_ship_burst(self.player.center_x, self.player.y + PLAYER_H / 2)
+        self.combo = 0
+        self.combo_time = 0.0
         self.lives -= 1
         self.add_shake(SHAKE_LIFE_LOST)
         self.alien_bullets.clear()
@@ -1103,10 +1228,28 @@ class Game(RenderMixin):
         if self.lives <= 0:
             self.game_over()
 
+    def spawn_ship_burst(self, x: float, y: float) -> None:
+        """A compact green-white explosion plus the red edge pulse."""
+        self.hurt_flash = HURT_FLASH_TIME
+        palette = (PLAYER_COLOR, (220, 255, 235), (255, 190, 120))
+        for _ in range(18):
+            angle = self.rng.uniform(0.0, math.tau)
+            speed = self.rng.uniform(40.0, 230.0)
+            life = self.rng.uniform(0.28, 0.65)
+            self.debris.append([
+                x, y, math.cos(angle) * speed, math.sin(angle) * speed,
+                life, life, self.rng.choice(palette),
+                self.rng.choice((2, 3, 3, 4)),
+            ])
+        self.rings.append([x, y, 7.0, 0.36, PLAYER_COLOR])
+        self.flashes.append([x, y, 0.12, 0.12, (255, 255, 255), 26.0])
+        self.flashes.append([x, y, 0.24, 0.24, PLAYER_COLOR, 18.0])
+
     def game_over(self) -> None:
         if self.state == "playing":
             self.state = "gameover"
             self.pending_record = True
+            self.game_over_time = 0.0
             self.player_bullets.clear()
             self.alien_bullets.clear()
             self.play("boom")
@@ -1145,7 +1288,7 @@ class Game(RenderMixin):
         self.score += 100
         self.play("wave")
         self.spawn_wave()
-        self.spawn_popup(WIDTH / 2, HEIGHT / 2, "+100", (255, 220, 120))
+        self.begin_wave_intro(cleared=True)
 
     def await_cover(self, timeout: float = 2.0) -> None:
         """Block until the prefetched cover for the current wave is ready.
@@ -1157,7 +1300,7 @@ class Game(RenderMixin):
             return
         surf = self.cover_prefetcher.take(block=True, timeout=timeout)
         if surf is not None:
-            self.pulp_bg = surf
+            self.adopt_cover(surf)
             self.cover_pending = False
 
     def toggle_pause(self) -> None:
@@ -1170,6 +1313,14 @@ class Game(RenderMixin):
         if self.state in ("title", "paused", "playing", "gameover"):
             self.score_return_state = self.state
             self.score_scroll = 0
+            # Land the table on this run's row instead of always showing the
+            # top, so a lower-ranked entry is actually visible when opened.
+            if self.state == "gameover" and self.last_rank is not None:
+                highest = max(0, len(self.leaderboard.entries)
+                              - LEADERBOARD_ROWS)
+                self.score_scroll = int(clamp(
+                    self.last_rank - 1 - LEADERBOARD_ROWS // 2,
+                    0, highest))
             self.clear_armed = False
             self.state = "scores"
 
@@ -1203,6 +1354,28 @@ class Game(RenderMixin):
         if sound:
             sound.play()
 
+    def _bezel(self, size: tuple[int, int]) -> pygame.Surface:
+        """A starfield panel that fills the letterbox around the 4:3 canvas."""
+        if getattr(self, "_bezel_key", None) == size:
+            return self._bezel_surface
+        sw, sh = size
+        surf = pygame.Surface(size)
+        top, bottom = (6, 8, 20), (20, 13, 36)
+        for y in range(0, sh, 6):
+            t = y / max(1, sh - 1)
+            colour = tuple(int(top[i] + (bottom[i] - top[i]) * t)
+                           for i in range(3))
+            surf.fill(colour, (0, y, sw, 6))
+        # A local RNG keeps the backdrop out of the gameplay seed.
+        rng = random.Random(sw * 7919 + sh * 104729)
+        for _ in range(max(80, sw * sh // 14000)):
+            x, y = rng.randrange(sw), rng.randrange(sh)
+            value = rng.randint(28, 82)
+            surf.fill((value, value, min(255, value + 24)), (x, y, 1, 1))
+        self._bezel_surface = surf
+        self._bezel_key = size
+        return surf
+
     def present(self, screen: pygame.Surface) -> None:
         """Blit the fixed 800x600 canvas onto any window/fullscreen size."""
         dx, dy = self.shake_offset()
@@ -1215,11 +1388,20 @@ class Game(RenderMixin):
         scale = min(sw / WIDTH, sh / HEIGHT)
         w = max(1, int(WIDTH * scale))
         h = max(1, int(HEIGHT * scale))
-        screen.fill((0, 0, 0))
+        ox = (sw - w) // 2
+        oy = (sh - h) // 2
+        if ox or oy:
+            screen.blit(self._bezel((sw, sh)), (0, 0))
+        else:
+            screen.fill((0, 0, 0))
         screen.blit(pygame.transform.smoothscale(self.canvas, (w, h)),
-                    ((sw - w) // 2 + dx, (sh - h) // 2 + dy))
+                    (ox + dx, oy + dy))
 
     def update_effects(self, dt: float) -> None:
+        if self.combo_time > 0:
+            self.combo_time = max(0.0, self.combo_time - dt)
+            if self.combo_time == 0:
+                self.combo = 0
         for d in self.debris:
             d[0] += d[2] * dt
             d[1] += d[3] * dt

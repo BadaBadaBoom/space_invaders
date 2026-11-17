@@ -15,15 +15,23 @@ from config import (
     BG_TOP,
     BOSS_COLOR,
     BOSS_DARK,
+    BOSS_EVERY,
     BOSS_H,
     BOSS_LIGHT,
     BOSS_W,
+    COLS,
+    COMBO_WINDOW,
+    COVER_FADE_TIME,
+    DASH_COOLDOWN,
     DASH_TIME,
     FIELD_TOP,
     FLOOR_Y,
+    GAMEOVER_FADE,
     HEIGHT,
+    HURT_FLASH_TIME,
     LEADERBOARD_ROWS,
     LEFT_WALL,
+    MUZZLE_FLASH_TIME,
     PLAYER_BULLET_COLOR,
     PLAYER_COLOR,
     PLAYER_H,
@@ -31,7 +39,9 @@ from config import (
     POPUP_RISE,
     POWERUP_COLORS,
     POWERUP_LABELS,
+    POWERUP_RAPID_TIME,
     POWERUP_SIZE,
+    POWERUP_TRIPLE_TIME,
     RECORD_BANNER_SCROLL,
     RECORD_BANNER_TIME,
     RIGHT_WALL,
@@ -143,6 +153,17 @@ def wrap_text(font: pygame.font.Font, text: str, width: int,
 
 
 class RenderMixin:
+    # -- backdrop transitions --------------------------------------------- #
+
+    def adopt_cover(self, new_bg: pygame.Surface) -> None:
+        """Swap in a prefetched cover with a crossfade from the old one."""
+        if new_bg is None:
+            return
+        if self.pulp_bg is not None and new_bg is not self.pulp_bg:
+            self._bg_prev = self.pulp_bg
+            self._bg_fade = 0.0
+        self.pulp_bg = new_bg
+
     # -- screen shake ------------------------------------------------------ #
 
     def add_shake(self, strength: float) -> None:
@@ -161,8 +182,13 @@ class RenderMixin:
         if prefetcher is not None and getattr(self, "cover_pending", False):
             new_bg = prefetcher.take(block=False)
             if new_bg is not None:
-                self.pulp_bg = new_bg
+                self.adopt_cover(new_bg)
                 self.cover_pending = False
+        if getattr(self, "_bg_prev", None) is not None:
+            self._bg_fade = min(1.0, getattr(self, "_bg_fade", 1.0)
+                                + dt / COVER_FADE_TIME)
+            if self._bg_fade >= 1.0:
+                self._bg_prev = None
         self.shake_phase += dt
         if self.shake_energy > 0.0:
             self.shake_energy *= math.exp(-dt / SHAKE_DECAY)
@@ -176,6 +202,19 @@ class RenderMixin:
         if self.record_banner_time > 0:
             # Keep the view jolting for the whole marquee, not just the hit.
             self.shake_energy = max(self.shake_energy, SHAKE_BANNER)
+        self.hurt_flash = max(0.0, getattr(self, "hurt_flash", 0.0) - dt)
+        if self.state == "gameover":
+            self.game_over_time = min(GAMEOVER_FADE,
+                                      getattr(self, "game_over_time", 0.0) + dt)
+        else:
+            self.game_over_time = 0.0
+        if self.state == "playing" and self.wave_intro_time > 0:
+            self.wave_intro_time = max(0.0, self.wave_intro_time - dt)
+            if self.wave_intro_time == 0 and self.wave_intro_bonus:
+                self.spawn_popup(WIDTH / 2, HEIGHT / 2 + 74,
+                                 f"+{self.wave_intro_bonus}",
+                                 (255, 220, 120))
+                self.wave_intro_bonus = 0
 
     def shake_offset(self) -> tuple[int, int]:
         """Current whole-canvas offset in pixels, or (0, 0) when settled."""
@@ -187,6 +226,62 @@ class RenderMixin:
         # a jolt, slow enough that consecutive frames still cohere.
         return (round(math.cos(phase * 57.0) * amplitude),
                 round(math.sin(phase * 83.0 + 1.3) * amplitude))
+
+    def draw_hurt_flash(self, surface: pygame.Surface) -> None:
+        """A red edge pulse after the ship is hit, strongest at impact."""
+        strength = getattr(self, "hurt_flash", 0.0) / HURT_FLASH_TIME
+        if strength <= 0.0:
+            return
+        vignette = getattr(self, "_hurt_vignette", None)
+        if vignette is None:
+            vignette = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            depth = 42
+            for i in range(depth):
+                alpha = int(96 * (1.0 - i / depth) ** 2)
+                if alpha <= 0:
+                    continue
+                pygame.draw.rect(vignette, (255, 38, 72, alpha),
+                                 (i, i, WIDTH - i * 2, HEIGHT - i * 2),
+                                 width=1)
+            self._hurt_vignette = vignette
+        vignette.set_alpha(int(255 * min(1.0, strength)))
+        surface.blit(vignette, (0, 0))
+        vignette.set_alpha(255)
+
+    def draw_wave_intro(self, surface: pygame.Surface) -> None:
+        """A short card between waves, also acting as the boss warning."""
+        if self.state != "playing":
+            return
+        remaining = getattr(self, "wave_intro_time", 0.0)
+        total = getattr(self, "wave_intro_total", 0.0)
+        if remaining <= 0 or total <= 0:
+            return
+        elapsed = total - remaining
+        fade = min(1.0, elapsed / 0.16, remaining / 0.24)
+        alpha = int(255 * max(0.0, fade))
+        band_h = 96
+        top = HEIGHT // 2 - band_h // 2
+        band = pygame.Surface((WIDTH, band_h), pygame.SRCALPHA)
+        band.fill((8, 10, 24, int(190 * fade)))
+        surface.blit(band, (0, top))
+
+        boss = getattr(self, "wave_intro_boss", False)
+        accent = (255, 120, 150) if boss else (255, 220, 120)
+        line = pygame.Surface((WIDTH, 2), pygame.SRCALPHA)
+        line.fill((*accent, int(180 * fade)))
+        surface.blit(line, (0, top))
+        surface.blit(line, (0, top + band_h - 2))
+
+        title = self.font_big.render(self.wave_intro_title, True,
+                                     (255, 255, 255) if not boss else accent)
+        title.set_alpha(alpha)
+        surface.blit(title, (WIDTH // 2 - title.get_width() // 2,
+                             top + 14))
+        subtitle = self.font_small.render(self.wave_intro_subtitle, True,
+                                          accent)
+        subtitle.set_alpha(alpha)
+        surface.blit(subtitle, (WIDTH // 2 - subtitle.get_width() // 2,
+                                top + 68))
 
     def draw(self, surface: pygame.Surface) -> None:
         self.draw_background(surface)
@@ -203,7 +298,9 @@ class RenderMixin:
             self.draw_debris(surface)
             self.draw_popups(surface)
             self.draw_hud(surface)
+        self.draw_hurt_flash(surface)
         self.draw_overlay(surface)
+        self.draw_wave_intro(surface)
         self.draw_record_banner(surface)
 
     def draw_background(self, surface: pygame.Surface) -> None:
@@ -212,7 +309,18 @@ class RenderMixin:
             color = tuple(int(BG_TOP[i] + (BG_BOTTOM[i] - BG_TOP[i]) * t) for i in range(3))
             pygame.draw.rect(surface, color, (0, y, WIDTH, 6))
         if self.pulp_bg is not None:
-            surface.blit(self.pulp_bg, (0, 0))
+            previous = getattr(self, "_bg_prev", None)
+            if previous is not None and getattr(self, "_bg_fade", 1.0) < 1.0:
+                surface.blit(previous, (0, 0))
+                cover = self.pulp_bg
+                base_alpha = cover.get_alpha()
+                if base_alpha is None:
+                    base_alpha = 255
+                cover.set_alpha(int(base_alpha * self._bg_fade))
+                surface.blit(cover, (0, 0))
+                cover.set_alpha(base_alpha)
+            else:
+                surface.blit(self.pulp_bg, (0, 0))
         for x, y, size, speed in self.stars:
             twinkle = 90 + int(80 * (0.5 + 0.5 * math.sin(pygame.time.get_ticks() / 900 + speed)))
             pygame.draw.rect(surface, (twinkle, twinkle, min(255, twinkle + 40)),
@@ -372,13 +480,28 @@ class RenderMixin:
         x, y = int(boss.x), int(boss.y)
         w, h = BOSS_W, BOSS_H
         flash = self.boss_flash > 0
-        hull = (255, 255, 255) if flash else BOSS_COLOR
-        dark = (255, 255, 255) if flash else BOSS_DARK
-        rim = (170, 110, 150) if not flash else (255, 255, 255)
-        light = BOSS_LIGHT if not flash else (255, 255, 255)
+        enraged = getattr(self, "boss_raged", False)
+        if flash:
+            hull = dark = rim = light = (255, 255, 255)
+        elif enraged:
+            # Overdrive repaints the hull in warning reds.
+            hull = (255, 96, 118)
+            dark = (76, 20, 38)
+            rim = (255, 176, 128)
+            light = (255, 238, 176)
+        else:
+            hull = BOSS_COLOR
+            dark = BOSS_DARK
+            rim = (170, 110, 150)
+            light = BOSS_LIGHT
 
+        pulse = 0.5 + 0.5 * math.sin(
+            pygame.time.get_ticks() / (150.0 if enraged else 330.0))
+        glow_colour = (255, 84, 112) if enraged else BOSS_COLOR
         glow = pygame.Surface((w + 40, h + 40), pygame.SRCALPHA)
-        pygame.draw.ellipse(glow, (*BOSS_COLOR, 26), glow.get_rect())
+        pygame.draw.ellipse(
+            glow, (*glow_colour, int((26 if not enraged else 18) + 18 * pulse)),
+            glow.get_rect())
         surface.blit(glow, (x - 20, y - 20))
 
         # Engine pods either side of the hull.
@@ -420,12 +543,27 @@ class RenderMixin:
             lx = x + int(w * 0.16) + i * int(w * 0.22)
             pygame.draw.circle(surface, light, (lx, y + int(h * 0.44)), 2)
 
-        # Segmented health bar, kept above the hull.
+        # Segmented health bar, kept above the hull.  It stays hidden while
+        # the ship is still sliding into the arena, and a pale ghost segment
+        # drains a beat behind the real bar.
+        if getattr(self, "boss_entry", 0.0) > 0:
+            return
         bar = pygame.Rect(x, y - 14, w, 7)
         pygame.draw.rect(surface, (26, 18, 36), bar, border_radius=3)
         fraction = max(0.0, boss.hp / boss.max_hp)
+        ghost = getattr(self, "boss_ghost_hp", boss.hp)
+        ghost_fraction = max(fraction, min(1.0, ghost / boss.max_hp))
+        if ghost_fraction > fraction:
+            ghost_fill = pygame.Rect(
+                bar.x + 1, bar.y + 1,
+                max(1, int((bar.w - 2) * ghost_fraction)), bar.h - 2)
+            pygame.draw.rect(surface, (132, 66, 84), ghost_fill,
+                             border_radius=2)
         if fraction > 0:
-            colour = (255, 110, 130) if fraction < 0.35 else (255, 205, 90)
+            if enraged or fraction < 0.35:
+                colour = (255, 110, 130)
+            else:
+                colour = (255, 205, 90)
             fill = pygame.Rect(bar.x + 1, bar.y + 1,
                                max(1, int((bar.w - 2) * fraction)), bar.h - 2)
             pygame.draw.rect(surface, colour, fill, border_radius=2)
@@ -435,6 +573,16 @@ class RenderMixin:
                              (tx, bar.y + bar.h - 2), 1)
         pygame.draw.rect(surface, (110, 80, 130), bar, width=1,
                          border_radius=3)
+
+        # Nameplate: which sentinel this is, and when it is angry.
+        tier = max(1, self.wave // BOSS_EVERY)
+        tag = f"SENTINEL {tier}"
+        if enraged:
+            tag += "  //  OVERDRIVE"
+        colour = (255, 150, 168) if enraged else (255, 196, 214)
+        label = self.font_tiny.render(tag, True, colour)
+        surface.blit(label, (x + w // 2 - label.get_width() // 2,
+                             bar.y - label.get_height() - 3))
 
     def draw_shields(self, surface: pygame.Surface) -> None:
         for s in self.shields:
@@ -483,12 +631,36 @@ class RenderMixin:
                                  rect.centery - label.get_height() // 2))
 
     def draw_ship(self, surface: pygame.Surface, x: int, y: int,
-                  colour: tuple[int, int, int]) -> None:
-        pygame.draw.rect(surface, colour, (x + 16, y, 14, 6), border_radius=2)
-        pygame.draw.rect(surface, colour, (x + 4, y + 6, PLAYER_W - 8, 6))
+                  colour: tuple[int, int, int], lean: int = 0) -> None:
+        # Twin engine flames flicker behind the hull.
+        tick = pygame.time.get_ticks()
+        for nx, phase in ((x + 14, 0.0), (x + 31, 1.7)):
+            length = 7 + int(4 * (0.5 + 0.5 * math.sin(
+                tick / 34.0 + phase + nx * 0.05)))
+            pygame.draw.polygon(surface, (255, 132, 54), (
+                (nx - 4, y + PLAYER_H - 3), (nx + 4, y + PLAYER_H - 3),
+                (nx, y + PLAYER_H + length)))
+            pygame.draw.polygon(surface, (255, 232, 170), (
+                (nx - 2, y + PLAYER_H - 3), (nx + 2, y + PLAYER_H - 3),
+                (nx, y + PLAYER_H + length * 2 // 3)))
+        # A small lean makes the ship read as moving without rotating the
+        # collision box.
+        pygame.draw.rect(surface, colour, (x + 16 + lean, y, 14, 6),
+                         border_radius=2)
+        pygame.draw.rect(surface, colour, (x + 4 + lean // 2, y + 6,
+                                           PLAYER_W - 8, 6))
         pygame.draw.rect(surface, colour, (x, y + 12, PLAYER_W, 6),
                          border_radius=3)
-        pygame.draw.rect(surface, (10, 30, 22), (x + 20, y + 2, 6, 4))
+        pygame.draw.rect(surface, (10, 30, 22),
+                         (x + 20 + lean, y + 2, 6, 4))
+
+    def draw_muzzle_flash(self, surface: pygame.Surface, x: int, y: int,
+                          lean: int = 0) -> None:
+        """A brief pale cone above the nose when a shot leaves the ship."""
+        mx = x + PLAYER_W // 2 + lean
+        pygame.draw.polygon(surface, (255, 244, 190), (
+            (mx - 4, y - 1), (mx + 4, y - 1), (mx, y - 13)))
+        pygame.draw.circle(surface, (255, 255, 230), (mx, y - 3), 2)
 
     def draw_dash_shield(self, surface: pygame.Surface, x: int, y: int) -> None:
         """A glowing bubble around the ship during the invulnerable burst."""
@@ -514,11 +686,16 @@ class RenderMixin:
             self.draw_dash_shield(surface, x, y)
         if p.invulnerable > 0 and int(p.invulnerable * 12) % 2 == 0:
             return
+        lean = p.move_dir * (4 if p.dash_time > 0 else 3)
+        recoil = 1 if p.muzzle > MUZZLE_FLASH_TIME * 0.5 else 0
         if p.dash_time > 0 and p.dash_dir:
             # Warp trail behind the burst.
             for step, ghost in ((1, (86, 170, 124)), (2, (44, 92, 68))):
-                self.draw_ship(surface, x - p.dash_dir * step * 18, y, ghost)
-        self.draw_ship(surface, x, y, PLAYER_COLOR)
+                self.draw_ship(surface, x - p.dash_dir * step * 18, y,
+                               ghost, lean)
+        self.draw_ship(surface, x, y + recoil, PLAYER_COLOR, lean)
+        if p.muzzle > 0:
+            self.draw_muzzle_flash(surface, x, y + recoil, lean)
 
     def draw_debris(self, surface: pygame.Surface) -> None:
         for flash in self.flashes:
@@ -587,7 +764,6 @@ class RenderMixin:
         surface.blit(score_text, (LEFT_WALL, 23))
         wave = self.font_small.render(f"WAVE {self.wave}", True, UI_DIM)
         surface.blit(wave, (WIDTH // 2 - wave.get_width() // 2, 24))
-        surface.blit(wave, (WIDTH // 2 - wave.get_width() // 2, 24))
         if self.music_genre:
             label = self.font_small.render(
                 f"({self.music_genre})", True, (80, 88, 130))
@@ -604,30 +780,87 @@ class RenderMixin:
                       else (40, 44, 68))
             pygame.draw.rect(surface, colour, (x, y, cell, 3))
 
-        # Dash readiness: a pair of chevrons beside the fleet map.
-        ready = self.player.dash_cooldown <= 0 and self.player.dash_time <= 0
-        shade = PLAYER_COLOR if ready else (58, 66, 96)
-        for i in range(2):
-            x0 = 92 + i * 9
+        # Dash readiness: four chevrons fill back up as the burst recharges.
+        if self.player.dash_time > 0:
+            charge = 1.0
+        elif self.player.dash_cooldown > 0:
+            charge = 1.0 - self.player.dash_cooldown / DASH_COOLDOWN
+        else:
+            charge = 1.0
+        filled = int(math.ceil(charge * 4))
+        ready = charge >= 1.0
+        pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() / 190.0)
+        for i in range(4):
+            x0 = 92 + i * 7
+            if i < filled:
+                shade = PLAYER_COLOR
+                if ready:
+                    shade = tuple(int(c * (0.78 + 0.22 * pulse))
+                                  for c in PLAYER_COLOR)
+            else:
+                shade = (44, 50, 78)
             pygame.draw.polygon(surface, shade,
-                                ((x0, 47), (x0 + 6, 53), (x0, 59)))
+                                ((x0, 48), (x0 + 5, 53), (x0, 58)))
+
+        # Kill chain: how many kills landed inside the chain window.
+        if self.combo > 1 and self.combo_time > 0:
+            fading = self.combo_time < 0.3
+            if fading and int(self.combo_time * 30) % 2:
+                chain_colour = (255, 120, 140)
+            else:
+                chain_colour = (255, 220, 120)
+            chain = self.font_tiny.render(f"CHAIN {self.combo}", True,
+                                          chain_colour)
+            surface.blit(chain, (132, 43))
+            track = pygame.Rect(132, 59, chain.get_width(), 3)
+            pygame.draw.rect(surface, (42, 38, 54), track)
+            fill = pygame.Rect(track.x, track.y,
+                               max(1, int(track.w * self.combo_time
+                                          / COMBO_WINDOW)), 3)
+            pygame.draw.rect(surface, chain_colour, fill)
 
         # lives as tiny ships, right-aligned
         for i in range(max(0, self.lives)):
             x = RIGHT_WALL - 26 * (i + 1)
             pygame.draw.rect(surface, PLAYER_COLOR, (x, 28, 20, 4), border_radius=2)
             pygame.draw.rect(surface, PLAYER_COLOR, (x + 4, 24, 12, 4), border_radius=2)
+        # The slot that was just lost flashes red for a beat.
+        if self.hurt_flash > 0 and int(self.hurt_flash * 24) % 2 == 0:
+            x = RIGHT_WALL - 26 * (max(0, self.lives) + 1)
+            pygame.draw.rect(surface, (255, 80, 105), (x, 28, 20, 4),
+                             border_radius=2)
+            pygame.draw.rect(surface, (255, 80, 105), (x + 4, 24, 12, 4),
+                             border_radius=2)
 
-        # Active boosts, right-aligned under the lives.
+        # Active boosts as small draining bars, right-aligned under the lives.
         boosts = []
         if self.player.rapid > 0:
-            boosts.append(f"RAPID {math.ceil(self.player.rapid)}s")
+            boosts.append(("RAPID", self.player.rapid,
+                           POWERUP_RAPID_TIME, (255, 205, 90)))
         if self.player.triple > 0:
-            boosts.append(f"TRIPLE {math.ceil(self.player.triple)}s")
+            boosts.append(("TRIPLE", self.player.triple,
+                           POWERUP_TRIPLE_TIME, (120, 220, 255)))
         if boosts:
-            label = self.font_tiny.render("   ".join(boosts), True,
-                                          (255, 230, 150))
-            surface.blit(label, (RIGHT_WALL - label.get_width(), 44))
+            x = RIGHT_WALL
+            for name, remaining, duration, colour in reversed(boosts):
+                label = self.font_tiny.render(name, True, colour)
+                bar_w = 44
+                total = label.get_width() + 6 + bar_w
+                x -= total
+                if remaining < 2.0 and int(remaining * 8) % 2 == 0:
+                    colour = (255, 110, 120)
+                text = self.font_tiny.render(name, True, colour)
+                surface.blit(text, (x, 42))
+                track = pygame.Rect(x + label.get_width() + 6, 48, bar_w, 6)
+                pygame.draw.rect(surface, (38, 40, 60), track,
+                                 border_radius=3)
+                fill = pygame.Rect(track.x, track.y,
+                                   max(1, int(track.w * min(1.0, remaining
+                                       / max(0.001, duration)))), track.h)
+                pygame.draw.rect(surface, colour, fill, border_radius=3)
+                pygame.draw.rect(surface, (12, 14, 24), track, width=1,
+                                 border_radius=3)
+                x -= 12
 
     def draw_leaderboard(self, surface: pygame.Surface) -> None:
         """Scrollable top-100 table of run scores and shooting stats."""
@@ -670,6 +903,8 @@ class RenderMixin:
                 y = 148 + offset * 25
                 highlighted = (self.score_return_state == "gameover"
                                and rank == self.last_rank)
+                if not highlighted and offset % 2:
+                    surface.fill((16, 20, 38), (44, y - 2, 712, 22))
                 if highlighted:
                     surface.fill((45, 42, 34), (44, y - 2, 712, 22))
                 colour = rank_colors.get(rank, UI_COLOR)
@@ -678,6 +913,9 @@ class RenderMixin:
                 name = str(entry.get("name") or "???")
                 name_text = self.font_small.render(name, True, colour)
                 surface.blit(name_text, (96, y))
+                if highlighted:
+                    tag = self.font_tiny.render("NEW", True, (255, 225, 120))
+                    surface.blit(tag, (96 + name_text.get_width() + 7, y + 2))
                 values = (
                     (f"{rank}", 80),
                     (f"{int(entry['score'])}", 310),
@@ -689,6 +927,20 @@ class RenderMixin:
                 for value, right in values:
                     text = self.font_small.render(value, True, colour)
                     surface.blit(text, (right - text.get_width(), y))
+
+            # Scrollbar shows where the visible window sits in the full table.
+            if len(entries) > LEADERBOARD_ROWS:
+                track = pygame.Rect(772, 148, 4, LEADERBOARD_ROWS * 25 - 4)
+                pygame.draw.rect(surface, (38, 42, 70), track, border_radius=2)
+                span = LEADERBOARD_ROWS / len(entries)
+                thumb_h = max(22, int(track.height * span))
+                travel = max(0, track.height - thumb_h)
+                offset = (self.score_scroll
+                          / max(1, len(entries) - LEADERBOARD_ROWS))
+                thumb = pygame.Rect(track.x, track.y + int(travel * offset),
+                                    track.w, thumb_h)
+                pygame.draw.rect(surface, (150, 170, 230), thumb,
+                                 border_radius=2)
 
             end = start + len(visible)
             footer = self.font_tiny.render(
@@ -710,9 +962,12 @@ class RenderMixin:
         surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 566))
 
     def draw_overlay(self, surface: pygame.Surface) -> None:
-        # No story card unless draw_gameover_story runs this frame.
+        # No story card unless the game-over layer draws one this frame.
         self.story_panel_rect = None
         if self.state == "playing":
+            return
+        if self.state == "gameover":
+            self.draw_gameover_overlay(surface)
             return
         shade = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
         shade.fill((6, 8, 20, 220 if self.state == "scores" else 190))
@@ -721,6 +976,7 @@ class RenderMixin:
         if self.state == "scores":
             self.draw_leaderboard(surface)
         elif self.state == "title":
+            self.draw_title_attract(surface)
             title = self.font_big.render("SPACE INVADERS", True, (255, 255, 255))
             surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 170))
 
@@ -747,43 +1003,140 @@ class RenderMixin:
             # Below the painted cover title, above the floor line.
             surface.blit(start, (WIDTH // 2 - start.get_width() // 2, 524))
         elif self.state == "paused":
-            title = self.font_big.render("PAUSED", True, UI_COLOR)
-            hint = self.font_small.render("press P to resume", True, UI_DIM)
-            surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 250))
-            surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 320))
-        elif self.state == "gameover":
-            story = getattr(self, "story", None)
-            if story is not None:
-                self.draw_gameover_story(surface, story)
-                return
-            # Offline layout has no clickable link.
-            self.story_link_rect = None
-            stats = self.run_stats()
-            title = self.font_big.render("GAME OVER", True, (255, 110, 130))
-            score = self.font_mid.render(
-                f"Score {self.score}   Wave {self.wave}", True, UI_COLOR)
-            line = self.font_small.render(
-                f"AVATARS KILLED {stats['avatars']}    "
-                f"BUNKERS SHOT {stats['bunker']:.1f}%    "
-                f"ACCURACY {stats['accuracy']:.1f}%", True, UI_COLOR)
-            if self.last_rank is not None:
-                rank = self.font_mid.render(
-                    f"NEW HIGH SCORE  #{self.last_rank}", True,
-                    (255, 225, 120))
-            else:
-                rank = self.font_small.render(
-                    "DID NOT MAKE THE TOP 100", True, UI_DIM)
-            hint = self.font_small.render(
-                "press ENTER to play again", True, (255, 220, 120))
-            scores_hint = self.font_small.render(
-                "press L for high scores", True, UI_DIM)
-            surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 138))
-            surface.blit(score, (WIDTH // 2 - score.get_width() // 2, 220))
-            surface.blit(line, (WIDTH // 2 - line.get_width() // 2, 270))
-            surface.blit(rank, (WIDTH // 2 - rank.get_width() // 2, 304))
-            surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 374))
-            surface.blit(scores_hint,
-                         (WIDTH // 2 - scores_hint.get_width() // 2, 404))
+            self.draw_pause_screen(surface)
+
+    def draw_title_attract(self, surface: pygame.Surface) -> None:
+        """A quiet marching fleet and the occasional saucer behind the title."""
+        tick = pygame.time.get_ticks() / 1000.0
+        spacing = 39
+        width = COLS * ALIEN_W + (COLS - 1) * (spacing - ALIEN_W)
+        margin = LEFT_WALL + 16
+        travel = max(0, WIDTH - margin * 2 - width)
+        base = margin + (0.5 + 0.5 * math.sin(tick * 0.34)) * travel
+        frame = int(tick * 3.2) % 2
+        look = alien_look(1)
+        for i in range(COLS):
+            x = int(base + i * spacing)
+            y = int(104 + math.sin(tick * 2.1 + i * 0.55) * 2)
+            colour = tuple(int(c * 0.58) for c in ROW_COLORS[i % len(ROW_COLORS)])
+            self.draw_alien_sprite(surface, x, y, colour, frame, look)
+
+        cycle = tick % 13.0
+        if cycle < 3.0:
+            progress = cycle / 3.0
+            x = int(-40 + progress * (WIDTH + 80))
+            y = 74 + int(math.sin(tick * 3.0) * 2)
+            pygame.draw.ellipse(surface, (92, 104, 138), (x, y + 3, 32, 9))
+            pygame.draw.ellipse(surface, (142, 160, 196), (x + 8, y, 16, 7))
+            pygame.draw.circle(surface, (255, 118, 76), (x + 16, y + 9), 2)
+
+    def draw_pause_screen(self, surface: pygame.Surface) -> None:
+        """Pause doubles as a run summary and a quiet controls reminder."""
+        title = self.font_big.render("PAUSED", True, UI_COLOR)
+        surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 108))
+        resume = self.font_small.render("press P to resume", True, UI_DIM)
+        surface.blit(resume, (WIDTH // 2 - resume.get_width() // 2, 174))
+
+        panel = pygame.Rect(96, 210, 608, 272)
+        pygame.draw.rect(surface, (10, 13, 30), panel, border_radius=10)
+        pygame.draw.rect(surface, (70, 80, 130), panel, width=1,
+                         border_radius=10)
+        stats = self.run_stats()
+        line = self.font_mid.render(
+            f"SCORE {self.score:05d}    WAVE {self.wave}    LIVES {self.lives}",
+            True, UI_COLOR)
+        surface.blit(line, (WIDTH // 2 - line.get_width() // 2, 230))
+        detail = self.font_small.render(
+            f"ACCURACY {stats['accuracy']:.1f}%    "
+            f"BUNKERS SHOT {stats['bunker']:.1f}%    "
+            f"AVATARS {stats['avatars']}", True, UI_DIM)
+        surface.blit(detail, (WIDTH // 2 - detail.get_width() // 2, 272))
+        pygame.draw.line(surface, (48, 56, 96), (128, 302), (672, 302), 1)
+
+        controls = (
+            "MOVE  ARROWS / A-D      FIRE  SPACE      DASH  DOUBLE-TAP",
+            "PAUSE  P      SCORES  L      MUSIC  M      CRT  F3      FULLSCREEN  F11",
+        )
+        for i, text in enumerate(controls):
+            label = self.font_tiny.render(text, True, (255, 220, 120))
+            surface.blit(label, (WIDTH // 2 - label.get_width() // 2,
+                                 322 + i * 28))
+
+        genre = (self.music_genre or "").upper()
+        if not genre or not getattr(self, "music_enabled", True):
+            music = "MUSIC OFF"
+        elif getattr(self, "music_muted", False):
+            music = f"TRACK  {genre}    MUSIC OFF"
+        else:
+            music = (f"TRACK  {genre}    "
+                     f"MUSIC {getattr(self, 'music_volume_percent', 0)}%")
+        track = self.font_small.render(music, True, (120, 200, 255))
+        surface.blit(track, (WIDTH // 2 - track.get_width() // 2, 404))
+
+        hint = self.font_tiny.render(
+            "L  high scores      P  resume      ESC  leave fullscreen",
+            True, UI_DIM)
+        surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 446))
+
+    def draw_gameover_overlay(self, surface: pygame.Surface) -> None:
+        """Fade the game-over card in over the death explosion."""
+        fade = min(1.0, getattr(self, "game_over_time", 0.0) / GAMEOVER_FADE)
+        layer = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        layer.fill((6, 8, 20, 228))
+        header = pygame.Rect(34, 52, 732, 170)
+        pygame.draw.rect(layer, (10, 13, 30), header, border_radius=10)
+        pygame.draw.rect(layer, (46, 54, 92), header, width=1,
+                         border_radius=10)
+        self.draw_gameover_header(layer)
+        story = getattr(self, "story", None)
+        self.story_link_rect = None
+        if story is not None:
+            self.draw_gameover_story(layer, story)
+        else:
+            self.draw_gameover_fallback(layer)
+        hint = self.font_small.render(
+            "press ENTER to play again", True, (255, 220, 120))
+        scores_hint = self.font_small.render(
+            "press L for high scores", True, UI_DIM)
+        layer.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 522))
+        layer.blit(scores_hint,
+                   (WIDTH // 2 - scores_hint.get_width() // 2, 546))
+        layer.set_alpha(int(255 * fade))
+        surface.blit(layer, (0, 0))
+
+    def draw_gameover_header(self, surface: pygame.Surface) -> None:
+        stats = self.run_stats()
+        title = self.font_big.render("GAME OVER", True, (255, 110, 130))
+        score = self.font_mid.render(
+            f"SCORE {self.score}   WAVE {self.wave}", True, UI_COLOR)
+        line = self.font_small.render(
+            f"AVATARS KILLED {stats['avatars']}    "
+            f"BUNKERS SHOT {stats['bunker']:.1f}%    "
+            f"ACCURACY {stats['accuracy']:.1f}%", True, UI_COLOR)
+        if self.last_rank is not None:
+            rank = self.font_mid.render(
+                f"NEW HIGH SCORE  #{self.last_rank}", True,
+                (255, 225, 120))
+        else:
+            rank = self.font_small.render(
+                "DID NOT MAKE THE TOP 100", True, UI_DIM)
+        surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 68))
+        surface.blit(score, (WIDTH // 2 - score.get_width() // 2, 128))
+        surface.blit(line, (WIDTH // 2 - line.get_width() // 2, 160))
+        surface.blit(rank, (WIDTH // 2 - rank.get_width() // 2, 186))
+
+    def draw_gameover_fallback(self, surface: pygame.Surface) -> None:
+        """The story card's slot when the NASA feed did not answer."""
+        panel = pygame.Rect(34, 222, 732, 288)
+        pygame.draw.rect(surface, (14, 18, 38), panel, border_radius=10)
+        pygame.draw.rect(surface, (46, 54, 92), panel, width=1,
+                         border_radius=10)
+        title = self.font_mid.render("NO TRANSMISSION", True, UI_DIM)
+        sub = self.font_small.render(
+            "The NASA story feed did not answer this run.", True, UI_DIM)
+        surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 336))
+        surface.blit(sub, (WIDTH // 2 - sub.get_width() // 2, 378))
+
 
     def draw_record_banner(self, surface: pygame.Surface) -> None:
         """A flashing marquee that scrolls the new record across the arena."""
@@ -817,31 +1170,7 @@ class RenderMixin:
             x += width
 
     def draw_gameover_story(self, surface: pygame.Surface, story) -> None:
-        """Game-over screen with the NASA story card alongside all stats."""
-        stats = self.run_stats()
-
-        title = self.font_big.render("GAME OVER", True, (255, 110, 130))
-        surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 68))
-
-        score = self.font_mid.render(
-            f"Score {self.score}   Wave {self.wave}", True, UI_COLOR)
-        surface.blit(score, (WIDTH // 2 - score.get_width() // 2, 128))
-
-        line = self.font_small.render(
-            f"AVATARS KILLED {stats['avatars']}    "
-            f"BUNKERS SHOT {stats['bunker']:.1f}%    "
-            f"ACCURACY {stats['accuracy']:.1f}%", True, UI_COLOR)
-        surface.blit(line, (WIDTH // 2 - line.get_width() // 2, 160))
-
-        if self.last_rank is not None:
-            rank = self.font_mid.render(
-                f"NEW HIGH SCORE  #{self.last_rank}", True, (255, 225, 120))
-            surface.blit(rank, (WIDTH // 2 - rank.get_width() // 2, 186))
-        else:
-            rank = self.font_small.render(
-                "DID NOT MAKE THE TOP 100", True, UI_DIM)
-            surface.blit(rank, (WIDTH // 2 - rank.get_width() // 2, 190))
-
+        """The NASA story card in the game-over panel slot."""
         panel = pygame.Rect(34, 222, 732, 288)
         # Marks the NASA story panel that the CRT pass leaves unfiltered.
         self.story_panel_rect = panel
@@ -903,14 +1232,6 @@ class RenderMixin:
             self.story_link_rect = pygame.Rect(48, 482, text_width, 17)
         else:
             self.story_link_rect = None
-
-        hint = self.font_small.render(
-            "press ENTER to play again", True, (255, 220, 120))
-        surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 522))
-        scores_hint = self.font_small.render(
-            "press L for high scores", True, UI_DIM)
-        surface.blit(scores_hint,
-                     (WIDTH // 2 - scores_hint.get_width() // 2, 546))
 
     def canvas_point(self, window_size, pos):
         """Map a window pixel back onto the 800x600 canvas."""

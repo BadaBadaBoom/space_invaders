@@ -107,8 +107,8 @@ and painted backdrops, but no soundtrack.
 | `←` / `→` or `A` / `D` | Move |
 | double-tap `←` / `→` | Dash: 126 px burst, 1.2 s cooldown |
 | `Space` | Fire (max 3 shots on screen) |
-| `P` | Pause / resume |
-| `L` | High-score leaderboard (up/down to scroll) |
+| `P` | Pause / resume (the pause screen summarises the run) |
+| `L` | High-score leaderboard (up/down, `PageUp`/`PageDown` or the mouse wheel to scroll) |
 | `Delete` | On the leaderboard: erase every saved score (press twice) |
 | `M` | Mute / unmute music |
 | `↑` / `↓` | Music volume up / down (10% steps) |
@@ -122,9 +122,14 @@ and painted backdrops, but no soundtrack.
 The dash ignores held movement for its 0.14 s burst, so it works as an
 escape even while you are pressing the other way, and the burst is
 **invulnerable** — a glowing shield wraps the ship, bullets pass through it,
-and dashing into a floating badge destroys the badge instead of you. A pair
-of chevrons beside the fleet map goes bright when it is ready and dims while
-it recharges.
+and dashing into a floating badge destroys the badge instead of you. Four
+chevrons beside the fleet map refill as the dash recharges, then pulse when it
+is ready.
+
+The ship itself reacts to what it is doing: twin engine flames flicker behind
+the hull, it leans into held movement, and firing kicks the nose back under a
+short muzzle flash. Active RAPID and TRIPLE pickups show as draining bars under
+the lives and blink when they are nearly out.
 
 ## The soundtrack
 
@@ -141,6 +146,12 @@ little harder.  A short three-note fanfare plays each time you clear a wave,
 sitting on top of the crossfade.  Track length is tuned by `MUSIC_SHORTEN` in
 `config.py` so the worker reliably finishes the next song before you clear the
 current wave.
+
+The soundtrack follows the game's state too: it **ducks smoothly** to 35% on
+pause and 45% on the leaderboard, fades out for game over, and swells back to
+full on resume or restart.  The fade time and each level are set by
+`MUSIC_DUCK_FADE`, `MUSIC_DUCK_PAUSED`, `MUSIC_DUCK_SCORES` and
+`MUSIC_DUCK_GAMEOVER` in `config.py`.
 
 Every wave gets a different **genre**, drawn from a shuffled bag so all seven
 play before any repeats, and two waves in a row never share one:
@@ -279,23 +290,32 @@ falls past the floor and vanishes.
 | `B` (green) | **Repair** — every bunker rebuilt to its original shape |
 
 Both timed boosts can run at once, and picking one up again resets its timer.
-The HUD shows the remaining seconds under the lives. A repair capsule only
-drops when a bunker is actually damaged, and the rebuilt cells count as
-deployed, so the run's bunker percentage stays meaningful.
+The HUD shows each one as a draining bar under the lives, blinking when it is
+nearly out. A repair capsule only drops when a bunker is actually damaged, and
+the rebuilt cells count as deployed, so the run's bunker percentage stays
+meaningful.
 
 ## Boss waves
 
-Every fifth wave fields one wide machine instead of the formation. It hovers
-near the top, swaying ±46 px, never marches, never drops toward the landing
-line, and brings no escorts.
+Every fifth wave fields one wide machine instead of the formation. A longer
+`CAPITAL SHIP INBOUND` card warns you first, then the hull **slides down from
+above the arena** over 1 second. It cannot fire until it settles, and its
+health bar and `SENTINEL 1` nameplate only appear once it is in place. After
+that it hovers near the top, swaying ±46 px, never marches, never drops toward
+the landing line, and brings no escorts.
 
 - **Health** scales with the boss number — 30 hits on wave 5, 42 on wave 10,
   54 on wave 15 — shown as a segmented bar above the hull that turns red in
-  the last third.
+  the last third. A pale **ghost segment** drains a beat behind the real bar,
+  so a burst of damage stays legible against the health it just removed.
 - **Three fire patterns** cycle: a five-shot fan from across the hull, a
   three-shot volley aimed at your current position (its bullets lean
   horizontally to reach a ship at either wall), and a six-shot rain scattered
   across the arena at mixed speeds.
+- **Overdrive** starts the moment the hull crosses half health: the palette
+  flashes to warning reds, the `SENTINEL` nameplate gains `// OVERDRIVE`, the
+  arena shakes, a ring and sparks burst off the hull, and its sway and volley
+  rate increase (`BOSS_RAGE_SWAY_SCALE`, `BOSS_RAGE_FIRE_SCALE`).
 - Each bullet hit is one point of damage and flashes the hull. The kill clears
   every enemy bullet, pays 1000 points (plus 250 per later boss), explodes
   three times, drops a guaranteed power-up capsule, and holds the arena for
@@ -340,15 +360,17 @@ misregistration, a fold crease, foxing spots and a vignette.
 The finished cover is dimmed to alpha 58–76, so it sits behind the aliens,
 avatars, bullets and bunkers without harming readability. A new one is painted
 for each wave, but it is rendered on a worker thread so the wave transition
-does not hitch; the previous backdrop stays on screen until the new one lands.
-If numpy is unavailable the game falls back to a simple gradient backdrop.
+does not hitch; when it lands, the old cover **crossfades** into the new one
+over `COVER_FADE_TIME` (0.55 s) instead of cutting. If numpy is unavailable the
+game falls back to a simple gradient backdrop.
 
 ## Fullscreen and scaling
 
 The game always draws into a fixed 800×600 canvas, then scales that canvas to
-whatever the window is, preserving the 4:3 aspect ratio and adding black bars
-(letterboxing) when needed. Everything — text, ships, bunkers, particles —
-grows together on a big display.
+whatever the window is, preserving the 4:3 aspect ratio. Rather than flat black
+bars, the space around the canvas is filled with a matching **starfield
+bezel**, so a wide fullscreen display looks deliberate. Everything — text,
+ships, bunkers, particles — grows together on a big display.
 
 - `F11` or `Alt+Enter` toggles fullscreen at the desktop resolution.
 - The window is resizable; drag it and the view scales with it.
@@ -388,21 +410,30 @@ size, and `off` or 0% intensity skips it entirely.
   formation, leaves a burning trail and swoops at you, steering as it falls
 - **Power-up capsules**: some alien kills drop a falling capsule for rapid
   fire, triple shot or a bunker repair
-- **A boss every fifth wave**: a wide machine with a segmented HP bar, three
-  fire patterns and no formation march
-- 3 lives, brief invulnerability (the ship flashes) after a hit
+- **A boss every fifth wave**: a warning card, a slide-in entrance, a
+  `SENTINEL` nameplate, a ghost-drained HP bar, three fire patterns, and an
+  overdrive phase below half health
+- 3 lives; a hit bursts the ship where it actually died, pulses a red edge
+  vignette and blinks the lost life icon as the replacement ship arrives
 - **A dash**: double-tap a direction for an invulnerable 126 px burst that
   overrides held movement, on a 1.2 s cooldown — the answer to a badge
   drifting into your lane
-- Endless waves: each cleared wave pays a bonus and starts faster
+- **Kill chains**: kills landed within 1.35 s of each other extend a `CHAIN`
+  counter, raise the popup multiplier and climb a short chirp; a hit or a
+  cleared wave breaks the chain
+- Endless waves: each cleared wave pays `+100` and opens a short intro card
+  that holds the fight while the new fleet arrives
 - Game over when you run out of lives **or** the formation reaches the landing line
-- Title, pause, and game-over screens; starfield plus a fresh 1960s cover
-  backdrop each wave; particle debris; procedural sound effects and a
-  different music genre per wave
+- Title, pause, and game-over screens: an attract-mode fleet and saucer
+  behind the title, a pause card with score/wave/lives/accuracy, and a
+  game-over card that fades in over the death beat; a starfield plus a fresh
+  1960s cover backdrop each wave, crossfaded in; particle debris; procedural
+  sound effects and a different music genre per wave
 - **Hit feedback**: the whole view jolts when the ship takes a hit, a little
   when you shoot an avatar badge, and hard when you beat the board's best;
-  every score award floats up as a fading number, and a live 8×4 fleet map in
-  the HUD dims as the ranks thin out
+  every score award floats up as a fading number, and the HUD tracks the
+  live 8×4 fleet map (dimming as ranks thin), dash recharge, kill chain and
+  power-up timers
 - **A persistent top-100 leaderboard** (see below) recording score, wave,
   avatars killed and your shooting statistics under a random silly handle
 - **A NASA story on every game-over screen** (see below): picture, headline and
@@ -444,9 +475,12 @@ through a bunker is not credited to you, but destroyed cells still count
 against the total, so the percentage reflects your own contribution.
 
 Press `L` from the title, pause, game-over or gameplay to open the table; use
-`Up`/`Down` (or `PageUp`/`PageDown`) to scroll through all 100 places and
-`L`/`Esc` to go back. Your latest run is highlighted in the table, and the
-game-over screen shows the run's numbers plus its new rank.
+`Up`/`Down` (or `PageUp`/`PageDown`) or the mouse wheel to scroll through all
+100 places and `L`/`Esc` to go back. The screen draws a scrollbar when the
+table is longer than the visible 15 rows. Opening it after a run **auto-scrolls
+to the new entry**, which is highlighted and tagged `NEW`, even when the run
+landed near the bottom. Alt rows are shaded so long scores stay readable. The
+game-over card still shows the run's numbers plus its new rank.
 
 To wipe the board, press `Delete` on that screen and then `Delete` again within
 four seconds to confirm. Any other key cancels, so a stray press costs nothing.
@@ -489,26 +523,37 @@ Plays the game with pseudo-random input for N seconds under SDL's dummy video
 driver, asserting that bullets and aliens stay in bounds, that no frame raises,
 and checking bunker erosion, letterboxed scaling at several resolutions, the
 avatar hazards (bouncing, every collision type, explosion effects, spawning),
-the mystery UFO (spawn timing, crossing, payout, its death shake and wail,
-and bullet-only kills),
-dive-bombers (launch, steering, leaving the arena, collisions, dash-through
-and points),
-power-up capsules (drop rate, falling, pickup, both timed boosts and repair),
-boss waves (spawning, scaling, sway bounds, all three volleys, damage, the
-kill payout and the victory pause),
-the dash (double-tap window, burst over held input, wall clamp, cooldown,
-invulnerability and dash-through kills),
-that each wave paints a different backdrop and rotates through every music
-genre without repeats, that the leaderboard keeps 100 sorted entries, reloads
-correctly and records each run once, that shooting statistics follow the
-accuracy/bunker rules above, and that the record marquee fires and expires, and that the synth is audible, deterministic per
-seed, and distinct across genres. Useful in CI without a display.
+the mystery UFO (spawn timing, crossing, payout, its death shake and wail, and
+bullet-only kills), dive-bombers (launch, steering, leaving the arena,
+collisions, dash-through and points), power-up capsules (drop rate, falling,
+pickup, both timed boosts and repair), boss waves (warning card, entry slide
+and fire lock, scaling, sway bounds, all three volleys, damage, ghost health,
+the overdrive trigger, kill payout and victory pause), the dash (double-tap
+window, burst over held input, wall clamp, cooldown, invulnerability and
+dash-through kills), the flow beats (wave cards freeze and release the sim, the
+`+100` bonus lands after the card, the death burst and red vignette fire, the
+game-over card fades in, and the pause summary paints), the feel pass (muzzle
+flash, movement lean, kill chains and expiry, cover crossfade, title attract
+loop), leaderboard landing (auto-scroll to a low-ranked new entry, top of the
+table from the title), audio ducking, that each wave paints a different
+backdrop and rotates through every music genre without repeats, that the
+leaderboard keeps 100 sorted entries, reloads correctly and records each run
+once, that shooting statistics follow the accuracy/bunker rules above, that
+the record marquee fires and expires, and that the synth is audible,
+deterministic per seed, and distinct across genres. Useful in CI without a
+display.
 
 ## Tweaking
 
-The game constants at the top of `main.py` are the knobs: window size, formation
-size/spacing, marching speed, bullet speeds, fire cooldown, colors, lives,
-number of bunkers, and bunker grid/cell size (`SHIELD_*`).
+The game constants at the top of `config.py` are the knobs: window size,
+formation size/spacing, marching speed, bullet speeds, fire cooldown, colours,
+lives, number of bunkers, and bunker grid/cell size (`SHIELD_*`).
+
+Flow beats are tuned by `WAVE_INTRO_TIME` and `WAVE_INTRO_BOSS_TIME` (how long
+the card holds the fight), `GAMEOVER_FADE` (game-over layer fade-in) and
+`HURT_FLASH_TIME` (red edge vignette after a lost life). The feel pass uses
+`MUZZLE_FLASH_TIME`, `COMBO_WINDOW` (kill-chain lifetime) and
+`COVER_FADE_TIME` (backdrop crossfade).
 
 The CRT defaults are in `config.py`: `CRT_DEFAULT` (`"off"`, `"low"`,
 `"medium"` or `"high"`) and `CRT_INTENSITY` (0.0–1.0).
@@ -528,25 +573,25 @@ Power-up capsules use `POWERUP_DROP_CHANCE`, `POWERUP_FALL_SPEED`,
 `POWERUP_RAPID_SCALE`/`TIME`, `POWERUP_TRIPLE_TIME`, and the
 `POWERUP_KINDS`/`WEIGHTS`/`COLORS`/`LABELS` tables.
 
-The boss is tuned by `BOSS_EVERY`, `BOSS_HP_BASE`/`STEP`,
-`BOSS_SCORE_BASE`/`STEP`, `BOSS_SWAY`/`SWAY_SPEED`, `BOSS_FIRE_MIN`/`MAX` and
-`BOSS_VOLLEY_SPEED`.
+The boss is tuned by `BOSS_EVERY`, `BOSS_ENTRY_TIME`, `BOSS_HP_BASE`/`STEP`,
+`BOSS_SCORE_BASE`/`STEP`, `BOSS_SWAY`/`SWAY_SPEED`, `BOSS_FIRE_MIN`/`MAX`,
+`BOSS_RAGE_FIRE_SCALE`/`BOSS_RAGE_SWAY_SCALE` and `BOSS_VOLLEY_SPEED`.
 
 The dash uses `DASH_TAP_WINDOW` (double-tap window), `DASH_SPEED`, `DASH_TIME`
 and `DASH_COOLDOWN`.
 
-The leaderboard size is `LEADERBOARD_SIZE` (100) and its path is
-`SCORES_FILE` at the top of `main.py`.
+The leaderboard size is `LEADERBOARD_SIZE` (100) and its path is `SCORES_FILE`
+in `config.py`.
 
 Screen shake is tuned in `config.py`: `SHAKE_DRIFTER`, `SHAKE_UFO`,
-`SHAKE_LIFE_LOST` and `SHAKE_RECORD` are the peak displacement in canvas
-pixels for each trigger, `SHAKE_BANNER` is the level held while the record
-marquee rolls, `SHAKE_MAX` caps stacked hits and `SHAKE_DECAY` is the fade
-time constant in seconds. The floating score numbers use `POPUP_LIFE` and
-`POPUP_RISE`, and the record marquee uses `RECORD_BANNER_TIME` and
-`RECORD_BANNER_SCROLL`. Set the trigger strengths to 0 to turn shake off.
-Each wave's alien silhouette comes from `alien_look()` in `render.py`, keyed
-on the wave number.
+`SHAKE_LIFE_LOST`, `SHAKE_RECORD` and `SHAKE_BOSS_RAGE` are the peak
+displacement in canvas pixels for each trigger, `SHAKE_BANNER` is the level
+held while the record marquee rolls, `SHAKE_MAX` caps stacked hits and
+`SHAKE_DECAY` is the fade time constant in seconds. The floating score numbers
+use `POPUP_LIFE` and `POPUP_RISE`, and the record marquee uses
+`RECORD_BANNER_TIME` and `RECORD_BANNER_SCROLL`. Set the trigger strengths to 0
+to turn shake off. Each wave's alien silhouette comes from `alien_look()` in
+`render.py`, keyed on the wave number.
 
 For the music, `MUSIC_SHORTEN` in `config.py` controls loop length (smaller
 = faster composition and more reliable prefetching).  `RIFF_RHYTHMS` defines
@@ -554,4 +599,5 @@ the rhythm templates, `Composer._make_sections` and each genre's `sections`
 define the song form, and the `GenreComposer` class attributes (`pans`,
 `reverb_sends`, `delay_sends`, `duck_depth`, `section_levels`) shape the mix
 and dynamics.  The intensity passed into `compose()` scales tempo, lead/bus
-levels and drum density so later waves feel more urgent.
+levels and drum density so later waves feel more urgent.  The state ducking
+uses `MUSIC_DUCK_FADE` and the three `MUSIC_DUCK_*` levels described above.

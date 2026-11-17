@@ -15,11 +15,15 @@ from config import (
     ALIEN_H,
     ALIEN_W,
     AVATAR_SHEET,
+    BOSS_ENTRY_TIME,
+    BOSS_H,
     BOSS_HP_BASE,
     BOSS_SCORE_BASE,
     BOSS_W,
     BOSS_Y,
     COLS,
+    COMBO_WINDOW,
+    COVER_FADE_TIME,
     DASH_COOLDOWN,
     DASH_SPEED,
     DASH_TAP_WINDOW,
@@ -34,10 +38,14 @@ from config import (
     DRIFTER_SPAWN_DELAY,
     DROP_DISTANCE,
     FLOOR_Y,
+    GAMEOVER_FADE,
     HEIGHT,
+    HURT_FLASH_TIME,
     LANDING_Y,
     LEADERBOARD_SIZE,
+    LEADERBOARD_ROWS,
     LEFT_WALL,
+    MUZZLE_FLASH_TIME,
     PLAYER_BULLET_SPEED,
     PLAYER_FIRE_COOLDOWN,
     PLAYER_W,
@@ -57,12 +65,15 @@ from config import (
     SHAKE_MAX,
     SHAKE_RECORD,
     SHAKE_BANNER,
+    SHAKE_BOSS_RAGE,
     SHAKE_UFO,
     UFO_FIRST_DELAY,
     UFO_POINTS,
     UFO_RESPAWN,
     UFO_SPEED_MIN,
     UFO_Y,
+    WAVE_INTRO_BOSS_TIME,
+    WAVE_INTRO_TIME,
     WIDTH,
 )
 from deps import metal, np
@@ -88,6 +99,9 @@ def selftest(seconds: float) -> int:
     game.start()
 
     check_shields(scores)
+    check_flow()
+    check_feel()
+    check_leaderboard_landing()
     check_drifters(scores)
     check_ufo()
     check_powerups()
@@ -158,10 +172,175 @@ def selftest(seconds: float) -> int:
     return 0
 
 
+def check_flow() -> None:
+    """Wave cards freeze play, the death beat fires, and cards fade out."""
+    game = Game(seed=31)
+    game.start()
+    assert game.wave_intro_time == WAVE_INTRO_TIME, "wave 1 skipped its card"
+    start_x = game.aliens[0].x
+    game.update(1 / 60)
+    assert game.aliens[0].x == start_x, "the fleet moved under the wave card"
+    # Pausing freezes the card with the rest of the game.
+    game.state = "paused"
+    frozen = game.wave_intro_time
+    game.update_feedback(1.0)
+    assert game.wave_intro_time == frozen, "wave card expired during pause"
+    game.state = "playing"
+    game.update_feedback(WAVE_INTRO_TIME + 0.01)
+    assert game.wave_intro_time == 0.0, "wave card never expired"
+    game.update(1 / 60)
+    assert game.aliens[0].x != start_x, "the fleet stayed frozen after the card"
+
+    # Clearing a wave starts the next card and pays its bonus when it lifts.
+    game.popups = []
+    game.next_wave()
+    assert game.wave_intro_time == WAVE_INTRO_TIME
+    assert game.wave_intro_bonus == 100
+    game.update_feedback(WAVE_INTRO_TIME + 0.01)
+    assert game.wave_intro_bonus == 0
+    assert any(p[2] == "+100" for p in game.popups), "wave bonus never popped"
+
+    # Boss waves get the longer warning card.
+    game.wave = 4
+    game.next_wave()
+    assert game.boss is not None and game.wave == 5
+    assert game.wave_intro_time == WAVE_INTRO_BOSS_TIME
+    assert game.wave_intro_boss and "CAPITAL" in game.wave_intro_subtitle
+
+    # Losing a life leaves a burst at the old position and a red vignette.
+    game = Game(seed=32)
+    game.start()
+    game.wave_intro_time = 0.0
+    game.lives = 3
+    game.flashes.clear()
+    game.rings.clear()
+    game.debris.clear()
+    game.player.x = LEFT_WALL
+    old_x = game.player.x
+    game.player_hit()
+    assert game.lives == 2
+    assert game.flashes and game.rings and game.debris, "ship died invisibly"
+    assert game.hurt_flash == HURT_FLASH_TIME
+    assert game.player.x == WIDTH / 2 - PLAYER_W / 2
+    assert old_x != game.player.x, "test did not move the ship"
+    game.update_feedback(HURT_FLASH_TIME + 0.01)
+    assert game.hurt_flash == 0.0, "hurt vignette never expired"
+    game.draw(game.canvas)
+
+    # The pause screen gets a full summary without crashing.
+    game.state = "paused"
+    game.music_genre = "synthwave"
+    game.music_enabled = True
+    game.music_volume_percent = 70
+    game.draw(game.canvas)
+    game.state = "playing"
+
+    # The game-over card fades in over the death beat.
+    game.lives = 1
+    game.player_hit()
+    assert game.state == "gameover"
+    assert game.game_over_time == 0.0
+    game.update_feedback(GAMEOVER_FADE / 2)
+    assert 0.0 < game.game_over_time < GAMEOVER_FADE
+    game.draw(game.canvas)
+    game.update_feedback(GAMEOVER_FADE)
+    assert game.game_over_time == GAMEOVER_FADE
+
+
+def check_feel() -> None:
+    """Ship motion, kill chains, and the cover crossfade all tick correctly."""
+    game = Game(seed=33)
+    game.start()
+    game.wave_intro_time = 0.0
+
+    # Firing lights the muzzle and sets the movement lean.
+    game.update_player(1 / 60, 0, True)
+    assert game.player.muzzle == MUZZLE_FLASH_TIME
+    assert game.player_bullets, "fire did not create a bullet"
+    game.update_player(1 / 60, -1, False)
+    assert game.player.move_dir == -1
+    game.update_player(1 / 60, 0, False)
+    assert game.player.move_dir == 0
+    game.update_player(MUZZLE_FLASH_TIME + 0.01, 0, False)
+    assert game.player.muzzle == 0.0
+
+    # Kills inside the window chain; letting it lapse clears the chain.
+    game.combo = 0
+    game.combo_time = 0.0
+    assert game.register_kill() == 1
+    assert game.register_kill() == 2
+    assert game.combo_time == COMBO_WINDOW
+    assert "combo2" in game.sounds
+    game.update_effects(COMBO_WINDOW + 0.01)
+    assert game.combo == 0 and game.combo_time == 0.0
+    game.register_kill()
+    game.player_hit()
+    assert game.combo == 0, "losing a life did not clear the chain"
+
+    # A cover swap crossfades instead of cutting.
+    old = pygame.Surface((WIDTH, HEIGHT))
+    old.fill((10, 20, 30))
+    new = pygame.Surface((WIDTH, HEIGHT))
+    new.fill((40, 50, 60))
+    game.pulp_bg = old
+    game.adopt_cover(new)
+    assert game.pulp_bg is new and game._bg_prev is old
+    assert game._bg_fade == 0.0
+    game.update_feedback(COVER_FADE_TIME / 2)
+    assert 0.0 < game._bg_fade < 1.0
+    game.update_feedback(COVER_FADE_TIME)
+    assert game._bg_prev is None and game._bg_fade == 1.0
+
+    # The attract loop and the new HUD bits paint without raising.
+    game.state = "title"
+    game.draw(game.canvas)
+    game.state = "playing"
+    game.player.rapid = 4.0
+    game.player.triple = 5.0
+    game.combo = 4
+    game.combo_time = COMBO_WINDOW / 2
+    game.draw(game.canvas)
+
+
+def check_leaderboard_landing() -> None:
+    """Opening the table from game over scrolls to the new run's row."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="si_landing_") as folder:
+        board = Leaderboard(Path(folder) / "scores.json")
+        for i in range(40):
+            board.add({
+                "score": 5000 - i * 10,
+                "wave": 1 + i % 9,
+                "avatars": i % 4,
+                "bunker": 10.0,
+                "accuracy": 50.0,
+            })
+        game = Game(seed=41, leaderboard=board)
+        game.state = "gameover"
+        game.last_rank = 30
+        game.show_scores()
+        start = game.score_scroll
+        assert start > 0, "a low-ranked run opened at the top of the table"
+        assert start <= 29 < start + LEADERBOARD_ROWS, (
+            "the highlighted row is outside the visible window")
+        game.draw(game.canvas)
+        game.close_scores()
+
+        # A fresh board from the title still opens at the top.
+        game = Game(seed=42)
+        game.state = "title"
+        game.last_rank = None
+        game.show_scores()
+        assert game.score_scroll == 0
+        game.close_scores()
+
+
 def check_shields(leaderboard: Leaderboard | None = None) -> None:
     """Direct checks: bunkers exist, stop bullets, and erode gradually."""
     game = Game(seed=5, leaderboard=leaderboard)
     game.start()
+    game.wave_intro_time = 0.0
     assert len(game.shields) == SHIELDS
 
     shield = game.shields[1]
@@ -481,7 +660,10 @@ def check_boss() -> None:
     assert game.alive_aliens() == [], "boss wave kept the formation"
     assert boss.max_hp == BOSS_HP_BASE
     assert boss.points == BOSS_SCORE_BASE
-    assert boss.y == BOSS_Y
+    assert boss.y == -BOSS_H, "boss did not start above the arena"
+    assert game.boss_entry == BOSS_ENTRY_TIME
+    assert game.boss_ghost_hp == boss.max_hp
+    game.draw(game.canvas)      # entrance frame paints without the bar
 
     # Later bosses are tougher and worth more; ordinary waves recovered.
     game.wave = 10
@@ -492,10 +674,27 @@ def check_boss() -> None:
     game.spawn_wave()
     assert game.boss is None and len(game.alive_aliens()) == COLS * ROWS
 
-    # It hovers inside the arena and never marches like the formation.
+    # It slides into place, and cannot fire before it arrives.
     game.wave = 5
     game.spawn_wave()
     boss = game.boss
+    game.alien_bullets.clear()
+    game.boss_volley = 0.0
+    game.update_boss(BOSS_ENTRY_TIME / 2)
+    assert 0 < game.boss_entry < BOSS_ENTRY_TIME
+    assert -BOSS_H < boss.y < BOSS_Y, "boss jumped instead of sliding"
+    assert not game.alien_bullets, "boss fired during its entrance"
+    start_hp = boss.hp
+    game.player_bullets = [Bullet(boss.x + 10, boss.y + 10,
+                                  -PLAYER_BULLET_SPEED, True)]
+    game.check_collisions()
+    assert boss.hp == start_hp, "boss was damageable during its entrance"
+    assert game.player_bullets, "bullet vanished on the entering boss"
+    game.player_bullets.clear()
+    game.update_boss(BOSS_ENTRY_TIME)
+    assert game.boss_entry == 0.0 and boss.y == BOSS_Y
+
+    # It hovers inside the arena and never marches like the formation.
     xs = []
     for _ in range(240):
         game.update_boss(1 / 60)
@@ -520,9 +719,29 @@ def check_boss() -> None:
     game.fire_boss_volley()
     assert len(game.alien_bullets) == 6, "rain volley lost shots"
 
+    # Crossing half health opens the overdrive phase and the ghost bar lags
+    # a beat behind the real one as it drains.
+    game.alien_bullets.clear()
+    boss.hp = boss.max_hp // 2 + 1
+    game.boss_raged = False
+    game.boss_ghost_hp = boss.hp
+    game.shake_energy = 0.0
+    game.popups = []
+    game.damage_boss()
+    assert game.boss_raged, "half health did not trigger overdrive"
+    assert game.shake_energy == SHAKE_BOSS_RAGE
+    assert any(p[2] == "OVERDRIVE" for p in game.popups)
+    assert game.boss_ghost_hp == boss.hp + 1
+    game.draw(game.canvas)      # enraged palette, nameplate and ghost bar
+    damaged = boss.hp
+    game.update_boss(0.01)
+    assert damaged < game.boss_ghost_hp < damaged + 1, (
+        "ghost health did not drain smoothly")
+    game.update_boss(5.0)
+    assert game.boss_ghost_hp == boss.hp, "ghost health never caught up"
+
     # Damage ticks down, then the kill pays out and clears the screen.
     game.alien_bullets = [Bullet(100, 300, 200, False)]
-    boss = game.boss
     game.score = 0
     game.shots_hit = 0
     start_hp = boss.hp
@@ -1144,6 +1363,7 @@ def check_stats() -> None:
         auto_board = Leaderboard(Path(tmp) / "auto.json")
         auto = Game(seed=13, leaderboard=auto_board)
         auto.start()
+        auto.wave_intro_time = 0.0
         auto.score = 321
         auto.wave = 4
         auto.alive_aliens()[0].y = LANDING_Y
@@ -1279,6 +1499,16 @@ def check_music_player() -> None:
 
         player.request("metal")
         assert player.pending is not None, "prepared track was not consumed"
+
+        # Ducking scales the live level without changing the user's volume.
+        player.pending = None
+        player.set_duck(0.25)
+        player.update(1.0)
+        assert player.duck < 0.3, "music did not duck"
+        assert player.level < player.volume * 0.3, "ducked level is too loud"
+        player.set_duck(1.0)
+        player.update(1.0)
+        assert player.duck > 0.9, "music did not swell back"
     finally:
         audio.metal = real
 

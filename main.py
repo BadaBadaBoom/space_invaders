@@ -53,6 +53,9 @@ from config import (
     HEIGHT,
     LEADERBOARD_ROWS,
     LEADERBOARD_SIZE,
+    MUSIC_DUCK_GAMEOVER,
+    MUSIC_DUCK_PAUSED,
+    MUSIC_DUCK_SCORES,
     RIGHT_WALL,
     UI_DIM,
     WIDTH,
@@ -65,6 +68,13 @@ from selftest import selftest
 
 CRT_PRESETS = ("off", "low", "medium", "high")
 CRT_INTENSITY_STEP = 0.1
+MUSIC_DUCK_LEVELS = {
+    "playing": 1.0,
+    "title": 1.0,
+    "paused": MUSIC_DUCK_PAUSED,
+    "scores": MUSIC_DUCK_SCORES,
+    "gameover": MUSIC_DUCK_GAMEOVER,
+}
 
 
 def read_input() -> tuple[int, bool]:
@@ -160,7 +170,6 @@ def main() -> int:
 
     while running:
         dt = clock.tick(FPS) / 1000.0
-        music_player.update()
         news_feed.update()
         game.update_feedback(dt)
 
@@ -189,6 +198,8 @@ def main() -> int:
                         # A missing browser must never take the game down.
                         with suppress(Exception):
                             webbrowser.open(story.link)
+            elif event.type == pygame.MOUSEWHEEL and game.state == "scores":
+                game.scroll_scores(-event.y * 3)
             elif event.type == pygame.KEYDOWN:
                 if game.state == "scores":
                     if event.key in (pygame.K_ESCAPE, pygame.K_l,
@@ -277,13 +288,22 @@ def main() -> int:
 
         if game.state == "playing":
             game.update(dt, move, fire)
-            game.update_effects(dt)
             if game.wave != last_wave:
                 last_wave = game.wave
                 music_player.request(game.music_genre,
                                      music_intensity(game.wave))
                 music_player.prepare(game.next_music_genre,
                                      music_intensity(game.wave + 1))
+        if game.state in ("playing", "gameover"):
+            # Keep the death burst animating under the fading game-over card.
+            game.update_effects(dt)
+
+        # Duck the soundtrack outside active play and bring it back on resume.
+        game.music_enabled = music_player.enabled
+        game.music_muted = music_player.muted
+        game.music_volume_percent = music_player.volume_percent
+        music_player.set_duck(MUSIC_DUCK_LEVELS.get(game.state, 1.0))
+        music_player.update(dt)
 
         # The story was fetched during the run; pin it to this game over and
         # start looking for the next one during the following game.
@@ -311,7 +331,8 @@ def main() -> int:
             hint = "MUSIC OFF"
         if hint:
             label = game.font_small.render(hint, True, UI_DIM)
-            game.canvas.blit(label, (RIGHT_WALL - label.get_width(), 44))
+            game.canvas.blit(label, (RIGHT_WALL - label.get_width(),
+                                     HEIGHT - 19))
         # The NASA story card stays crisp: keep a pre-CRT copy and put it back.
         panel = getattr(game, "story_panel_rect", None)
         clean_panel = None

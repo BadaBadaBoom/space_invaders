@@ -53,6 +53,7 @@ SHAKE_UFO = 8.0              # you brought down the mystery saucer
 SHAKE_LIFE_LOST = 9.0        # the ship was hit
 SHAKE_RECORD = 16.0         # half the fleet exploded: new high score
 SHAKE_BANNER = 6.0           # held for as long as the record marquee rolls
+SHAKE_BOSS_RAGE = 11.0       # the boss crosses into overdrive
 SHAKE_MAX = 20.0
 SHAKE_DECAY = 0.16
 
@@ -61,9 +62,26 @@ SHAKE_DECAY = 0.16
 RECORD_BANNER_TIME = 3.0
 RECORD_BANNER_SCROLL = 190.0     # px/s of horizontal marquee travel
 
+# Flow beats: a short wave card freezes play between waves, while the
+# game-over shade and the red hurt vignette fade in/out instead of popping.
+WAVE_INTRO_TIME = 1.05           # regular wave card, seconds
+WAVE_INTRO_BOSS_TIME = 1.35      # boss waves get a longer warning
+GAMEOVER_FADE = 0.45             # seconds for the game-over overlay to fade in
+HURT_FLASH_TIME = 0.45           # red edge vignette after losing a life
+
+# Feel: ship exhaust/muzzle feedback, kill chains, and backdrop crossfades.
+MUZZLE_FLASH_TIME = 0.07
+COMBO_WINDOW = 1.35             # seconds between kills that keeps a chain alive
+COVER_FADE_TIME = 0.55          # crossfade from the old cover to the new one
+
 # Music: loop length multiplier.  Smaller values compose faster and use less
 # memory, which makes the next-wave prefetch more reliable.  1.0 = full length.
 MUSIC_SHORTEN = 0.75
+# Music automatically ducks outside active play, then swells back on resume.
+MUSIC_DUCK_FADE = 0.22           # seconds to reach a new duck level
+MUSIC_DUCK_PAUSED = 0.35
+MUSIC_DUCK_SCORES = 0.45
+MUSIC_DUCK_GAMEOVER = 0.0
 
 # Floating "+points" numbers: how long they live and how fast they rise.
 POPUP_LIFE = 0.9
@@ -138,6 +156,7 @@ DIVE_TURN = 2.5             # how quickly a dive turns toward the ship
 BOSS_EVERY = 5
 BOSS_W, BOSS_H = 132, 58
 BOSS_Y = FORMATION_TOP + 12
+BOSS_ENTRY_TIME = 1.0        # seconds for the hull to slide down into place
 BOSS_SWAY = 46.0            # pixels either side of centre while it hovers
 BOSS_SWAY_SPEED = 0.55      # radians per second
 BOSS_HP_BASE = 30
@@ -145,6 +164,8 @@ BOSS_HP_STEP = 12
 BOSS_SCORE_BASE = 1000
 BOSS_SCORE_STEP = 250
 BOSS_FIRE_MIN, BOSS_FIRE_MAX = 1.4, 2.2
+BOSS_RAGE_FIRE_SCALE = 0.72  # volley interval multiplier below half health
+BOSS_RAGE_SWAY_SCALE = 1.35  # sway speed multiplier below half health
 BOSS_VOLLEY_SPEED = 250.0
 BOSS_COLOR = (238, 120, 190)
 BOSS_DARK = (58, 26, 62)

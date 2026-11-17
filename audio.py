@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import math
 import random
 import threading
 
 import pygame
 
-from config import MUSIC_SHORTEN
+from config import MUSIC_DUCK_FADE, MUSIC_SHORTEN
 from deps import metal
 
 DEFAULT_VOLUME = 0.32
@@ -20,6 +21,10 @@ class MusicPlayer:
     def __init__(self, enabled: bool = True, volume: float = DEFAULT_VOLUME) -> None:
         self.volume = max(0.0, min(1.0, volume))
         self.muted = False
+        # Runtime attenuation used for pause/game-over; independent of the
+        # user's volume so raising the volume still works while ducked.
+        self.duck = 1.0
+        self.duck_target = 1.0
         self.enabled = bool(enabled and metal is not None
                            and pygame.mixer.get_init())
         self.thread: threading.Thread | None = None
@@ -181,9 +186,16 @@ class MusicPlayer:
                 return  # superseded by a track taken from the prepared slot
             self.pending = data
 
-    def update(self) -> None:
+    def update(self, dt: float = 0.0) -> None:
         if not self.enabled:
             return
+        if abs(self.duck - self.duck_target) > 1e-3:
+            if dt <= 0.0:
+                self.duck = self.duck_target
+            else:
+                blend = 1.0 - math.exp(-dt / MUSIC_DUCK_FADE)
+                self.duck += (self.duck_target - self.duck) * blend
+            self._apply_volume()
         if self.want_new and not (self.thread and self.thread.is_alive()):
             self._start(self.want_genre, self.intensity)
         with self.lock:
@@ -224,10 +236,16 @@ class MusicPlayer:
         self._apply_volume()
         return self.volume
 
+    def set_duck(self, factor: float) -> None:
+        """Set the runtime output scale (1.0 = full, 0.0 = silent)."""
+        self.duck_target = max(0.0, min(1.0, float(factor)))
+
     @property
     def level(self) -> float:
-        """Effective output level, with mute folded in."""
-        return 0.0 if self.muted else self.volume
+        """Effective output level, with mute and ducking folded in."""
+        if self.muted:
+            return 0.0
+        return self.volume * self.duck
 
     @property
     def volume_percent(self) -> int:

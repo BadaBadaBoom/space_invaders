@@ -94,6 +94,8 @@ class Player:
     dash_time: float = 0.0   # seconds left in the current dash burst
     dash_cooldown: float = 0.0
     dash_dir: int = 0
+    move_dir: int = 0        # -1/0/1 for the current held direction
+    muzzle: float = 0.0      # seconds left on the firing flash
 
     def rect(self) -> pygame.Rect:
         return pygame.Rect(int(self.x), int(self.y), PLAYER_W, PLAYER_H)
