@@ -1054,8 +1054,8 @@ class RenderMixin:
         pygame.draw.line(surface, (48, 56, 96), (128, 302), (672, 302), 1)
 
         controls = (
-            "MOVE  ARROWS / A-D      FIRE  SPACE      DASH  DOUBLE-TAP",
-            "PAUSE  P      SCORES  L      MUSIC  M      CRT  F3      FULLSCREEN  F11",
+            "MOVE  ARROWS / A-D    FIRE  SPACE    DASH  DOUBLE-TAP",
+            "PAUSE  P   SCORES  L   MUSIC  M   CRT  F3   FULLSCREEN  F11",
         )
         for i, text in enumerate(controls):
             label = self.font_tiny.render(text, True, (255, 220, 120))
@@ -1074,7 +1074,7 @@ class RenderMixin:
         surface.blit(track, (WIDTH // 2 - track.get_width() // 2, 404))
 
         hint = self.font_tiny.render(
-            "L  high scores      P  resume      ESC  leave fullscreen",
+            "L  leaderboard      P  resume      ESC  leave fullscreen",
             True, UI_DIM)
         surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, 446))
 
