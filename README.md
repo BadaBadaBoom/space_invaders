@@ -708,6 +708,15 @@ and dynamics.  The intensity passed into `compose()` scales tempo, lead/bus
 levels and drum density so later waves feel more urgent.  The state ducking
 uses `MUSIC_DUCK_FADE` and the three `MUSIC_DUCK_*` levels described above.
 
+## Contact
+
+- **Bugs and feature requests:** open an issue on the repository.
+- **Security reports:** use GitHub's private vulnerability reporting form
+  described in [`SECURITY.md`](SECURITY.md). Please do not disclose exploit
+  details in a public issue.
+
+The project does not publish a contact email address.
+
 ## License
 
 Released into the public domain under [The Unlicense](UNLICENSE). You are free
